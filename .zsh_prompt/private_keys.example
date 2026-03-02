@@ -1,0 +1,13 @@
+# Private Keys Template
+# Copy this file to 'private_keys' and add your actual keys
+# The private_keys file is gitignored and won't be synced
+
+# AWS Personal Keys
+export AWS_ACCESS_KEY_ID=your_access_key_here
+export AWS_SECRET_ACCESS_KEY=your_secret_key_here
+
+# Custom hostname shown in PS1 (defaults to machine name if not set)
+# Uncomment and set this on machines where you want a custom name:
+# export PROMPT_HOSTNAME="RunLLM"
+
+# Add any other private keys or secrets below

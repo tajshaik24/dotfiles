@@ -1,0 +1,19 @@
+# Sensitive files
+.zsh_prompt/private_keys
+*private_keys_backup*
+
+# Local machine-specific configs (not synced)
+*.local
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Backup directories
+*_backup_*/
+
+# Temporary files
+*.swp
+*.swo
+*~

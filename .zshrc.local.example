@@ -1,0 +1,16 @@
+# Machine-specific configuration
+# Copy this file to ~/.zshrc.local and customize for each machine
+# (The .local file is gitignored and won't be synced)
+
+# Example: Work-specific conda environment
+# conda activate profile
+
+# Example: Machine-specific PATH additions
+# export PATH="/work/tools/bin:$PATH"
+
+# Example: Work-specific aliases
+# alias vpn='sudo openconnect work-vpn.example.com'
+
+# Example: Environment variables for work
+# export WORK_ENV="production"
+# export SLACK_TOKEN="xoxb-..."
