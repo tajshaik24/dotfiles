@@ -10,16 +10,26 @@ BACKUP_DIR="$HOME/dotfiles_backup_$(date +%Y%m%d_%H%M%S)"
 
 echo "🚀 Installing dotfiles..."
 
-# Create backup directory if any files exist
-if [ -f ~/.zshrc ] || [ -f ~/.tmux.conf ] || [ -f ~/.vimrc ] || [ -d ~/.zsh_prompt ]; then
-    echo "📦 Backing up existing dotfiles to $BACKUP_DIR"
-    mkdir -p "$BACKUP_DIR"
+# Create backup directory for any existing non-symlink files
+BACKUP_CREATED=false
+backup_if_real() {
+    local src="$1"
+    local target="$2"
+    # Only backup if it exists AND is not already a symlink into our dotfiles
+    if [ -e "$src" ] && ! [ -L "$src" ]; then
+        if [ "$BACKUP_CREATED" = false ]; then
+            echo "📦 Backing up existing dotfiles to $BACKUP_DIR"
+            mkdir -p "$BACKUP_DIR"
+            BACKUP_CREATED=true
+        fi
+        cp -r "$src" "$target"
+    fi
+}
 
-    [ -f ~/.zshrc ] && cp ~/.zshrc "$BACKUP_DIR/"
-    [ -f ~/.tmux.conf ] && cp ~/.tmux.conf "$BACKUP_DIR/"
-    [ -f ~/.vimrc ] && cp ~/.vimrc "$BACKUP_DIR/"
-    [ -d ~/.zsh_prompt ] && cp -r ~/.zsh_prompt "$BACKUP_DIR/"
-fi
+backup_if_real ~/.zshrc "$BACKUP_DIR/"
+backup_if_real ~/.tmux.conf "$BACKUP_DIR/"
+backup_if_real ~/.vimrc "$BACKUP_DIR/"
+backup_if_real ~/.zsh_prompt "$BACKUP_DIR/"
 
 # Preserve private_keys if it exists
 PRIVATE_KEYS_BACKUP=""
@@ -55,6 +65,8 @@ elif [ ! -f ~/.zsh_prompt/private_keys ] && [ -f "$DOTFILES_DIR/.zsh_prompt/priv
 fi
 
 echo "✅ Dotfiles installed successfully!"
-echo "📝 Backup saved to: $BACKUP_DIR"
+if [ "$BACKUP_CREATED" = true ]; then
+    echo "📝 Backup saved to: $BACKUP_DIR"
+fi
 echo ""
 echo "🔄 To apply changes, run: source ~/.zshrc"
