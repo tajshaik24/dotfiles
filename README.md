@@ -96,6 +96,16 @@ The `zshrc` file auto-detects conda installations across different machines by c
 
 No manual configuration needed - just install conda and it will be detected automatically.
 
+### Avoiding doubled env prefix in the prompt
+
+The custom theme renders the conda env name itself (via `precmd_conda_info` in `zsh_prompt/zsh_theme`). Conda's shell hook also prepends the env name by default, which causes `(envname)` to appear twice when an env is active. To let the theme own the prefix, disable conda's:
+
+```bash
+conda config --set changeps1 false
+```
+
+This writes `changeps1: false` to `~/.condarc` and only needs to be run once per machine.
+
 ## Notes
 
 - The `private_keys` file is gitignored for security and preserved during install/uninstall
