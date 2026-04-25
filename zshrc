@@ -7,6 +7,9 @@ export CLICOLOR=1
 export LDFLAGS="-L/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk/usr/lib -L/opt/homebrew/opt/openblas/lib -L/opt/homebrew/opt/openssl@3/lib"
 export CPPFLAGS="-I/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk/usr/lib -I/opt/homebrew/opt/openssl@3/include -I/opt/homebrew/opt/openblas/include"
 
+# Bun dependencies
+export PATH="$HOME/.bun/bin:$PATH"
+
 # Homebrew
 alias brew="arch -arm64 /opt/homebrew/bin/brew"
 export PATH="/opt/homebrew/bin:/opt/homebrew/opt/openssl@3/bin:/opt/homebrew/opt/gnu-sed/libexec/gnubin:/opt/homebrew/sbin:$PATH"
@@ -114,3 +117,13 @@ fi
 if [ -f ~/.zshrc.local ]; then
   source ~/.zshrc.local
 fi
+
+# bun completions
+[ -s "/Users/tshaik/.bun/_bun" ] && source "/Users/tshaik/.bun/_bun"
+
+# bun
+export BUN_INSTALL="$HOME/.bun"
+export PATH="$BUN_INSTALL/bin:$PATH"
+
+# Added by Cartesia CLI installer
+export PATH="/Users/tshaik/.cartesia/bin:$PATH"
