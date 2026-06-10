@@ -125,10 +125,10 @@ fi
 export BUN_INSTALL="$HOME/.bun"
 export PATH="$BUN_INSTALL/bin:$PATH"
 
-# Added by Cartesia CLI installer
-export PATH="/Users/tshaik/.cartesia/bin:$PATH"
-
 # Loads nvm
 export NVM_DIR="$HOME/.nvm"
 [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"  # This loads nvm
 [ -s "$NVM_DIR/bash_completion" ] && \. "$NVM_DIR/bash_completion"  # This loads nvm bash_completion
+
+# Cartesia CLI
+[ -d "$HOME/.cartesia/bin" ] && export PATH="$HOME/.cartesia/bin:$PATH"
