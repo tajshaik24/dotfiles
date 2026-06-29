@@ -26,10 +26,13 @@ backup_if_real() {
     fi
 }
 
+GHOSTTY_DIR="$HOME/Library/Application Support/com.mitchellh.ghostty"
+
 backup_if_real ~/.zshrc "$BACKUP_DIR/"
 backup_if_real ~/.tmux.conf "$BACKUP_DIR/"
 backup_if_real ~/.vimrc "$BACKUP_DIR/"
 backup_if_real ~/.zsh_prompt "$BACKUP_DIR/"
+backup_if_real "$GHOSTTY_DIR/config.ghostty" "$BACKUP_DIR/"
 
 # Preserve private_keys if it exists
 PRIVATE_KEYS_BACKUP=""
@@ -53,6 +56,13 @@ ln -sf "$DOTFILES_DIR/.zsh_prompt" ~/.zsh_prompt
 [ -f "$DOTFILES_DIR/tmux.conf" ] && ln -sf "$DOTFILES_DIR/tmux.conf" ~/.tmux.conf
 [ -f "$DOTFILES_DIR/vimrc" ] && ln -sf "$DOTFILES_DIR/vimrc" ~/.vimrc
 
+# Ghostty terminal config
+if [ -f "$DOTFILES_DIR/ghostty.config" ]; then
+    mkdir -p "$GHOSTTY_DIR"
+    rm -f "$GHOSTTY_DIR/config.ghostty"
+    ln -sf "$DOTFILES_DIR/ghostty.config" "$GHOSTTY_DIR/config.ghostty"
+fi
+
 # Restore private_keys if it was backed up
 if [ -n "$PRIVATE_KEYS_BACKUP" ] && [ -f "$PRIVATE_KEYS_BACKUP" ]; then
     echo "🔐 Restoring private_keys file..."
@@ -62,6 +72,24 @@ if [ -n "$PRIVATE_KEYS_BACKUP" ] && [ -f "$PRIVATE_KEYS_BACKUP" ]; then
 elif [ ! -f ~/.zsh_prompt/private_keys ] && [ -f "$DOTFILES_DIR/.zsh_prompt/private_keys.example" ]; then
     echo "💡 No private_keys found. Copy private_keys.example to private_keys and add your keys:"
     echo "   cp ~/.zsh_prompt/private_keys.example ~/.zsh_prompt/private_keys"
+fi
+
+# Optional: customize the machine name shown in the prompt.
+# Stored as PROMPT_HOSTNAME in the gitignored ~/.zsh_prompt/private_keys
+# (the theme uses ${PROMPT_HOSTNAME:-%m}, falling back to the real hostname).
+if [ -t 0 ]; then
+    printf "🏷  Custom machine name for the prompt? (leave blank to skip): "
+    read -r PROMPT_NAME || PROMPT_NAME=""
+    if [ -n "$PROMPT_NAME" ]; then
+        KEYS_FILE="$HOME/.zsh_prompt/private_keys"
+        touch "$KEYS_FILE"
+        chmod 700 "$KEYS_FILE"
+        # Replace any existing PROMPT_HOSTNAME line, then append the new one
+        sed -i.bak '/^export PROMPT_HOSTNAME=/d' "$KEYS_FILE" 2>/dev/null || true
+        rm -f "$KEYS_FILE.bak"
+        echo "export PROMPT_HOSTNAME=\"$PROMPT_NAME\"" >> "$KEYS_FILE"
+        echo "✅ Prompt will show: $PROMPT_NAME"
+    fi
 fi
 
 echo "✅ Dotfiles installed successfully!"
