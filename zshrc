@@ -2,6 +2,10 @@
 autoload colors && colors
 setopt PROMPT_SUBST
 export CLICOLOR=1
+# ls colors (BSD ls / macOS). Default dir color is dark blue, which is
+# unreadable on a dark background — use bold cyan for directories instead.
+# Pairs (fg+bg): dir, symlink, socket, pipe, exec, block, char, setuid, setgid, sticky-other-w, other-w
+export LSCOLORS="Gxfxcxdxbxegedabagacad"
 
 # C++ Compilation
 export LDFLAGS="-L/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk/usr/lib -L/opt/homebrew/opt/openblas/lib -L/opt/homebrew/opt/openssl@3/lib"
