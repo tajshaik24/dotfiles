@@ -36,6 +36,9 @@ export NVM_DIR="$HOME/.nvm"
 # Claude Code
 export PATH="$HOME/.local/bin:$PATH"
 
+# Personal scripts
+export PATH="$HOME/.bin:$PATH"
+
 ## Grep Options
 grep-flag-available() {
     echo | grep $1 "" >/dev/null 2>&1
