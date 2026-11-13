@@ -25,9 +25,8 @@ git clone <your-repo-url> ~/Developer/dotfiles
 # Install dependencies (rfig, zsh-syntax-highlighting, fzf)
 cd ~/Developer/dotfiles
 brew bundle --file=Brewfile
-rfig setup   # one-time: scans commands and links ~/.config/rfig/rfig.zsh
 
-# Run the install script
+# Run the install script (also installs rfig and runs its one-time setup)
 chmod +x install.sh
 ./install.sh
 
@@ -100,7 +99,17 @@ Inline command suggestions come from [rfig](https://github.com/tamia6/rfig). `zs
 
 Do not install `zsh-autocomplete`: it rebinds the same line-editor widgets and conflicts with rfig.
 
-`rfig setup` may append its own `source ...` line to `~/.zshrc` (which is `zshrc` in this repo). That line is already covered, so delete it before committing.
+`install.sh` installs rfig automatically. To install it by hand with Homebrew:
+
+```bash
+brew tap tamia6/tap
+brew install rfig
+rfig setup   # one-time: scans commands and links ~/.config/rfig/rfig.zsh
+```
+
+To upgrade later: `brew upgrade rfig`, then open a new shell.
+
+`rfig setup` appends its own `source ...` line to `~/.zshrc` (which is `zshrc` in this repo). `zshrc` already sources rfig, so `install.sh` removes that line. If you run `rfig setup` by hand, delete it before committing.
 
 ## Conda Configuration
 

@@ -64,6 +64,24 @@ elif [ ! -f ~/.zsh_prompt/private_keys ] && [ -f "$DOTFILES_DIR/.zsh_prompt/priv
     echo "   cp ~/.zsh_prompt/private_keys.example ~/.zsh_prompt/private_keys"
 fi
 
+# rfig: inline command suggestions, installed via Homebrew
+if command -v brew >/dev/null 2>&1; then
+    if ! brew list rfig >/dev/null 2>&1; then
+        echo "📦 Installing rfig..."
+        brew install tamia6/tap/rfig
+    fi
+    if [ ! -e "$HOME/.config/rfig/rfig.zsh" ]; then
+        echo "⚙️  Running rfig setup..."
+        rfig setup --shell zsh
+        # zshrc already sources rfig; drop the line setup appends to it
+        sed -i.bak '/^source ".*\/\.config\/rfig\/rfig\.zsh"$/d' "$DOTFILES_DIR/zshrc"
+        rm -f "$DOTFILES_DIR/zshrc.bak"
+    fi
+else
+    echo "💡 Homebrew not found. Install rfig later with:"
+    echo "   brew install tamia6/tap/rfig && rfig setup"
+fi
+
 # Optional: customize the machine name shown in the prompt.
 # Stored as PROMPT_HOSTNAME in the gitignored ~/.zsh_prompt/private_keys
 # (the theme uses ${PROMPT_HOSTNAME:-%m}, falling back to the real hostname).
