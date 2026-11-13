@@ -24,7 +24,6 @@ typeset -U path
 path=(
   "$HOME/.bin"                                   # personal scripts
   "$HOME/.local/bin"                             # Claude Code
-  "$HOME/.cartesia/bin"                          # Cartesia CLI
   "$BUN_INSTALL/bin"
   "$HOMEBREW_PREFIX/bin"
   "$HOMEBREW_PREFIX/sbin"
