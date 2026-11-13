@@ -1,141 +1,89 @@
-# ZSH Customization
-autoload colors && colors
+# ── Basics ────────────────────────────────────────────────────────────
+autoload -U colors && colors
 setopt PROMPT_SUBST
 export CLICOLOR=1
-# ls colors (BSD ls / macOS). Default dir color is dark blue, which is
-# unreadable on a dark background — use bold cyan for directories instead.
+# BSD ls colors: bold cyan directories (default dark blue is unreadable on dark backgrounds).
 # Pairs (fg+bg): dir, symlink, socket, pipe, exec, block, char, setuid, setgid, sticky-other-w, other-w
 export LSCOLORS="Gxfxcxdxbxegedabagacad"
+alias grep='grep --color=auto --exclude-dir={.bzr,CVS,.git,.hg,.svn}'
 
-# C++ Compilation
-export LDFLAGS="-L/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk/usr/lib -L/opt/homebrew/opt/openblas/lib -L/opt/homebrew/opt/openssl@3/lib"
-export CPPFLAGS="-I/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk/usr/lib -I/opt/homebrew/opt/openssl@3/include -I/opt/homebrew/opt/openblas/include"
+# ── Homebrew ──────────────────────────────────────────────────────────
+export HOMEBREW_PREFIX="/opt/homebrew"
+alias brew="arch -arm64 $HOMEBREW_PREFIX/bin/brew"
 
-# Bun dependencies
-export PATH="$HOME/.bun/bin:$PATH"
+# C++ compilation
+export LDFLAGS="-L/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk/usr/lib -L$HOMEBREW_PREFIX/opt/openblas/lib -L$HOMEBREW_PREFIX/opt/openssl@3/lib"
+export CPPFLAGS="-I/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk/usr/lib -I$HOMEBREW_PREFIX/opt/openssl@3/include -I$HOMEBREW_PREFIX/opt/openblas/include"
 
-# Homebrew
-alias brew="arch -arm64 /opt/homebrew/bin/brew"
-export PATH="/opt/homebrew/bin:/opt/homebrew/opt/openssl@3/bin:/opt/homebrew/opt/gnu-sed/libexec/gnubin:/opt/homebrew/sbin:$PATH"
-
-FPATH="$(brew --prefix)/share/zsh/site-functions:${FPATH}"
-source /opt/homebrew/share/zsh-autocomplete/zsh-autocomplete.plugin.zsh
-source /opt/homebrew/share/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh
-export ZSH_HIGHLIGHT_HIGHLIGHTERS_DIR=/opt/homebrew/share/zsh-syntax-highlighting/highlighters
-
-# Go development
-export GOPATH="${HOME}/go"
-export GOROOT="$(brew --prefix golang)/libexec"
-export PATH="$PATH:${GOPATH}/bin:${GOROOT}/bin:${GOPATH}/src"
-
-# nvm Paths
+# ── PATH (deduplicated; earlier entries win) ──────────────────────────
+export GOPATH="$HOME/go"
+export BUN_INSTALL="$HOME/.bun"
 export NVM_DIR="$HOME/.nvm"
-  [ -s "/opt/homebrew/opt/nvm/nvm.sh" ] && \. "/opt/homebrew/opt/nvm/nvm.sh"  # This loads nvm
-  [ -s "/opt/homebrew/opt/nvm/etc/bash_completion.d/nvm" ] && \. "/opt/homebrew/opt/nvm/etc/bash_completion.d/nvm"  # This loads nvm bash_completion
 
-# Claude Code
-export PATH="$HOME/.local/bin:$PATH"
+typeset -U path
+path=(
+  "$HOME/.bin"                                   # personal scripts
+  "$HOME/.local/bin"                             # Claude Code
+  "$HOME/.cartesia/bin"                          # Cartesia CLI
+  "$BUN_INSTALL/bin"
+  "$HOMEBREW_PREFIX/bin"
+  "$HOMEBREW_PREFIX/sbin"
+  "$HOMEBREW_PREFIX/opt/openssl@3/bin"
+  "$HOMEBREW_PREFIX/opt/gnu-sed/libexec/gnubin"
+  $path
+  "$GOPATH/bin"
+)
 
-# Personal scripts
-export PATH="$HOME/.bin:$PATH"
+# ── Completion ────────────────────────────────────────────────────────
+# Plain compinit (rfig provides the inline suggestions). Rebuild the dump at most once a day.
+fpath=("$HOMEBREW_PREFIX/share/zsh/site-functions" $fpath)
+autoload -Uz compinit
+zcompdump=(${ZDOTDIR:-$HOME}/.zcompdump(N.mh-24))
+if (( $#zcompdump )); then compinit -C; else compinit; fi
+unset zcompdump
 
-## Grep Options
-grep-flag-available() {
-    echo | grep $1 "" >/dev/null 2>&1
-}
+[ -s "$BUN_INSTALL/_bun" ] && source "$BUN_INSTALL/_bun"
+command -v ngrok &>/dev/null && eval "$(ngrok completion)"
 
-GREP_OPTIONS=""
-
-# color grep results
-if grep-flag-available --color=auto; then
-    GREP_OPTIONS+=" --color=auto"
+# ── nvm ───────────────────────────────────────────────────────────────
+if [ -s "$HOMEBREW_PREFIX/opt/nvm/nvm.sh" ]; then
+  source "$HOMEBREW_PREFIX/opt/nvm/nvm.sh"
+  source "$HOMEBREW_PREFIX/opt/nvm/etc/bash_completion.d/nvm"
+elif [ -s "$NVM_DIR/nvm.sh" ]; then
+  source "$NVM_DIR/nvm.sh"
+  [ -s "$NVM_DIR/bash_completion" ] && source "$NVM_DIR/bash_completion"
 fi
 
-# ignore VCS folders (if the necessary grep flags are available)
-VCS_FOLDERS="{.bzr,CVS,.git,.hg,.svn}"
-
-if grep-flag-available --exclude-dir=.cvs; then
-    GREP_OPTIONS+=" --exclude-dir=$VCS_FOLDERS"
-elif grep-flag-available --exclude=.cvs; then
-    GREP_OPTIONS+=" --exclude=$VCS_FOLDERS"
-fi
-
-# export grep settings
-alias grep="grep $GREP_OPTIONS"
-
-# ngrok Completions
-if command -v ngrok &>/dev/null; then
-    eval "$(ngrok completion)"
-fi
-
-# clean up
-unset GREP_OPTIONS
-unset VCS_FOLDERS
-unfunction grep-flag-available
-
-# >>> conda initialize >>>
-# Auto-detect conda installation across different machines
-if command -v conda &>/dev/null; then
-    # Conda is already in PATH, use it directly
-    __conda_setup="$(conda 'shell.zsh' 'hook' 2> /dev/null)"
-    if [ $? -eq 0 ]; then
-        eval "$__conda_setup"
-    fi
-    unset __conda_setup
-else
-    # Try common conda installation locations
-    CONDA_LOCATIONS=(
-        "/opt/homebrew/Caskroom/miniconda/base"
-        "/opt/homebrew/Caskroom/anaconda/base"
-        "$HOME/miniconda3"
-        "$HOME/anaconda3"
-        "$HOME/.conda"
-        "/usr/local/Caskroom/miniconda/base"
-    )
-
-    for CONDA_PATH in "${CONDA_LOCATIONS[@]}"; do
-        if [ -f "$CONDA_PATH/bin/conda" ]; then
-            __conda_setup="$($CONDA_PATH/bin/conda 'shell.zsh' 'hook' 2> /dev/null)"
-            if [ $? -eq 0 ]; then
-                eval "$__conda_setup"
-            else
-                if [ -f "$CONDA_PATH/etc/profile.d/conda.sh" ]; then
-                    . "$CONDA_PATH/etc/profile.d/conda.sh"
-                else
-                    export PATH="$CONDA_PATH/bin:$PATH"
-                fi
-            fi
-            unset __conda_setup
-            break
-        fi
-    done
-    unset CONDA_LOCATIONS CONDA_PATH
-fi
-# <<< conda initialize <<<
-
-if [ -d ~/.zsh_prompt ]; then
-  for file in ~/.zsh_prompt/*; do
-    source $file
+# ── conda (auto-detected across machines) ─────────────────────────────
+conda_bin=$(command -v conda)
+if [ -z "$conda_bin" ]; then
+  for conda_base in \
+      "$HOMEBREW_PREFIX/Caskroom/miniconda/base" \
+      "$HOMEBREW_PREFIX/Caskroom/anaconda/base" \
+      "$HOME/miniconda3" \
+      "$HOME/anaconda3" \
+      "$HOME/.conda" \
+      "/usr/local/Caskroom/miniconda/base"; do
+    [ -x "$conda_base/bin/conda" ] && conda_bin="$conda_base/bin/conda" && break
   done
 fi
-
-# Source local configuration (machine-specific settings)
-# This file is not tracked in git - use it for work-specific configs
-if [ -f ~/.zshrc.local ]; then
-  source ~/.zshrc.local
+if [ -n "$conda_bin" ]; then
+  conda_hook="$("$conda_bin" shell.zsh hook 2>/dev/null)" && eval "$conda_hook"
 fi
+unset conda_bin conda_base conda_hook
 
-# bun completions
-[ -s "/Users/tshaik/.bun/_bun" ] && source "/Users/tshaik/.bun/_bun"
+# ── Prompt, aliases, git helpers ──────────────────────────────────────
+for file in ~/.zsh_prompt/*(N.); do
+  [[ $file == *.example ]] || source "$file"
+done
+unset file
 
-# bun
-export BUN_INSTALL="$HOME/.bun"
-export PATH="$BUN_INSTALL/bin:$PATH"
+# Machine-specific settings (gitignored)
+[ -f ~/.zshrc.local ] && source ~/.zshrc.local
 
-# Loads nvm
-export NVM_DIR="$HOME/.nvm"
-[ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"  # This loads nvm
-[ -s "$NVM_DIR/bash_completion" ] && \. "$NVM_DIR/bash_completion"  # This loads nvm bash_completion
-
-# Cartesia CLI
-[ -d "$HOME/.cartesia/bin" ] && export PATH="$HOME/.cartesia/bin:$PATH"
+# ── Line editor plugins (keep last) ───────────────────────────────────
+# rfig: inline command suggestions (brew install tamia6/tap/rfig && rfig setup)
+[ -r "$HOME/.config/rfig/rfig.zsh" ] && source "$HOME/.config/rfig/rfig.zsh"
+# Syntax highlighting must be sourced after every other widget is defined.
+[ -r "$HOMEBREW_PREFIX/share/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh" ] \
+  && source "$HOMEBREW_PREFIX/share/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh"

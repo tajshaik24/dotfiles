@@ -4,9 +4,8 @@ My personal shell configuration and dotfiles, synchronized across machines.
 
 ## What's Included
 
-- **Brewfile** - Homebrew packages the shell config depends on (zsh extensions, Ghostty)
-- **ghostty.config** - Ghostty terminal config (font, colors, padding)
-- **zshrc** - Main ZSH configuration with auto-detecting conda initialization
+- **Brewfile** - Homebrew packages the shell config depends on (rfig, zsh-syntax-highlighting, fzf)
+- **zshrc** - Main ZSH configuration: PATH, completion, nvm, auto-detected conda, rfig, syntax highlighting
 - **zsh_prompt/** - Custom ZSH prompt, aliases, and themes
   - `aliases` - Custom aliases and functions (includes `sync_dotfiles`)
   - `zsh_theme` - Custom prompt theme
@@ -23,9 +22,10 @@ My personal shell configuration and dotfiles, synchronized across machines.
 # Clone the repository
 git clone <your-repo-url> ~/Developer/dotfiles
 
-# Install dependencies (zsh extensions, Ghostty)
+# Install dependencies (rfig, zsh-syntax-highlighting, fzf)
 cd ~/Developer/dotfiles
 brew bundle --file=Brewfile
+rfig setup   # one-time: scans commands and links ~/.config/rfig/rfig.zsh
 
 # Run the install script
 chmod +x install.sh
@@ -69,7 +69,6 @@ The install script creates symlinks from your home directory to this repository:
 - `~/.zsh_prompt/` → `~/Developer/dotfiles/.zsh_prompt/`
 - `~/.tmux.conf` → `~/Developer/dotfiles/tmux.conf` (if exists)
 - `~/.vimrc` → `~/Developer/dotfiles/vimrc` (if exists)
-- `~/Library/Application Support/com.mitchellh.ghostty/config.ghostty` → `~/Developer/dotfiles/ghostty.config`
 
 This means any changes you make are automatically tracked in the repository.
 
@@ -94,6 +93,14 @@ The install script will:
 - 💡 Prompt you to create one from the example if you don't
 
 You'll need to manually copy your keys to new machines (use a password manager or secure method).
+
+## Completion (rfig)
+
+Inline command suggestions come from [rfig](https://github.com/tamia6/rfig). `zshrc` runs a plain `compinit` and sources `~/.config/rfig/rfig.zsh` if it exists, followed by zsh-syntax-highlighting (which must load last).
+
+Do not install `zsh-autocomplete`: it rebinds the same line-editor widgets and conflicts with rfig.
+
+`rfig setup` may append its own `source ...` line to `~/.zshrc` (which is `zshrc` in this repo). That line is already covered, so delete it before committing.
 
 ## Conda Configuration
 
