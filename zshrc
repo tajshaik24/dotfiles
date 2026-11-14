@@ -17,14 +17,11 @@ export CPPFLAGS="-I/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.p
 
 # ── PATH (deduplicated; earlier entries win) ──────────────────────────
 export GOPATH="$HOME/go"
-export BUN_INSTALL="$HOME/.bun"
 export NVM_DIR="$HOME/.nvm"
 
 typeset -U path
 path=(
-  "$HOME/.bin"                                   # personal scripts
-  "$HOME/.local/bin"                             # tcomp, Claude Code
-  "$BUN_INSTALL/bin"
+  "$HOME/.local/bin"                             # tcomp, rex-agent-restore, Claude Code
   "$HOMEBREW_PREFIX/bin"
   "$HOMEBREW_PREFIX/sbin"
   "$HOMEBREW_PREFIX/opt/openssl@3/bin"
@@ -39,9 +36,6 @@ autoload -Uz compinit
 zcompdump=(${ZDOTDIR:-$HOME}/.zcompdump(N.mh-24))
 if (( $#zcompdump )); then compinit -C; else compinit; fi
 unset zcompdump
-
-[ -s "$BUN_INSTALL/_bun" ] && source "$BUN_INSTALL/_bun"
-command -v ngrok &>/dev/null && eval "$(ngrok completion)"
 
 # ── nvm ───────────────────────────────────────────────────────────────
 if [ -s "$HOMEBREW_PREFIX/opt/nvm/nvm.sh" ]; then
