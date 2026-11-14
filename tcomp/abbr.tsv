@@ -1,9 +1,35 @@
 # tcomp abbreviations: <abbreviation><TAB><expansion>. %| marks the cursor.
-gc -m	git commit -m "%|"
+# Tab expands at the cursor; Enter expands in command position and runs.
+
+# git
 gc	git commit
+gc -m	git commit -m "%|"
 gca	git commit --amend --no-edit
-gst	git status
-gp	git push
-gpo	git push origin %|
+gcb	git checkout "$(git branch --format='%(refname:short)' | fzf)"
 gco	git checkout
 gl	git log --oneline --graph -20
+gp	git push
+gpo	git push origin %|
+gst	git status
+
+# listing and directories
+l	ls -Gplah
+lsa	ls -Gplah
+ll	ls -GplAh
+md	mkdir -p
+rd	rmdir
+
+# directory stack (cd -N jumps to the Nth previous directory)
+-	cd -
+1	cd -
+2	cd -2
+3	cd -3
+4	cd -4
+5	cd -5
+6	cd -6
+7	cd -7
+8	cd -8
+9	cd -9
+
+# Homebrew
+brewup	brew update; brew upgrade; brew cleanup; brew doctor

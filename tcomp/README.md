@@ -18,7 +18,8 @@ Inline command completion and directory-scoped history for zsh. It's a personal 
 cd tcomp
 cargo test                    # Rust unit tests
 cargo clippy --all-targets    # lint (currently clean)
-python3 tests/zsh_features.py # end-to-end zsh test in tmux: expects "all 18 checks OK"
+zsh -f tests/abbr_expand.zsh  # Enter-expansion edge cases
+python3 tests/zsh_features.py # end-to-end zsh test in tmux: expects "all 21 checks OK"
 ```
 
 - **Editing `tcomp.zsh`:** open a new shell to try it. Nothing needs rebuilding, because `zshrc` sources the repo copy.

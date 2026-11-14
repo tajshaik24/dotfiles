@@ -559,6 +559,14 @@ _tcomp_accept_line() {
     local record=${_tcomp_hits[_tcomp_selected]}
     BUFFER=${${record#*$'\t'}%%$'\t'*}
     CURSOR=${#BUFFER}
+  elif ! _tcomp_abbr_expand_line; then
+    # An expansion left a %| spot to fill in (e.g. a commit message): edit, don't run.
+    _tcomp_selected=1
+    _tcomp_hits=(); POSTDISPLAY=''
+    region_highlight=(${region_highlight:#*memo=tcomp})
+    (( CURSOR == ${#BUFFER} )) && _tcomp_preview
+    zle -R
+    return
   fi
   _tcomp_hist_mode=0
   _tcomp_history_record "$BUFFER"
@@ -625,6 +633,66 @@ _tcomp_abbr_expand() {
   # Only refresh the menu when the cursor is at the end (tcomp's menus need that).
   (( CURSOR == ${#BUFFER} )) && _tcomp_preview
   zle -R
+}
+
+# Enter: expand every abbreviation in command position (line start, or after
+# ; | &), so `ll src` runs `ls -GplAh src` the way an alias would.
+# A %| expansion with nothing after it stops for editing (returns 1);
+# with arguments after it, a trailing %| is dropped and a mid-line one
+# (gc -m "%|") is skipped in favour of a shorter abbreviation (gc).
+_tcomp_abbr_expand_line() {
+  emulate -L zsh
+  setopt extended_glob
+  _tcomp_abbr_load
+  (( $#_tcomp_abbr )) || return 0
+  local mark='%|' word prefix key best value after
+  local -a starts
+  local -i pos=1 command=1 start index cursor=-1 has_args
+  # Offsets of command words, found by walking zsh's own tokenization.
+  for word in "${(z)BUFFER}"; do
+    case $word in
+      ($'\n'|';'|'&&'|'||'|'|'|'|&'|'&'|'&!'|'&|') command=1; continue ;;
+    esac
+    prefix=${BUFFER[pos,-1]%%${(b)word}*}
+    (( pos += ${#prefix} ))
+    (( command )) && starts+=( $pos )
+    (( pos += ${#word} ))
+    command=0
+  done
+  # Right to left, so earlier offsets stay valid.
+  for (( index = $#starts; index >= 1; index-- )); do
+    start=$starts[index]
+    best=''
+    for key in ${(k)_tcomp_abbr}; do
+      (( ${#key} > ${#best} )) || continue
+      [[ ${BUFFER[start,start+${#key}-1]} == "$key" ]] || continue
+      after=${BUFFER[start+${#key},-1]}
+      [[ -z $after || $after == [[:space:]\;\|\&]* ]] || continue
+      value=${_tcomp_abbr[$key]}
+      if [[ $value == *"$mark"?* && $after != [[:space:]]#(|[\;\|\&]*) ]]; then
+        continue
+      fi
+      best=$key
+    done
+    [[ -n $best ]] || continue
+    value=${_tcomp_abbr[$best]}
+    after=${BUFFER[start+${#best},-1]}
+    has_args=0
+    [[ $after == [[:space:]]#(|[\;\|\&]*) ]] || has_args=1
+    (( cursor >= 0 )) && (( cursor += ${#${value/"$mark"/}} - ${#best} ))
+    if [[ $value == *"$mark"* ]]; then
+      if (( has_args )); then
+        value=${${value/"$mark"/}%%[[:space:]]#}
+      else
+        cursor=$(( start - 1 + ${#${value%%"$mark"*}} ))
+        value=${value/"$mark"/}
+      fi
+    fi
+    BUFFER=${BUFFER[1,start-1]}$value$after
+  done
+  (( cursor < 0 )) && return 0
+  CURSOR=$cursor
+  return 1
 }
 
 # Yellow "⇥ expansion" line under the prompt whenever Tab would expand an abbreviation.

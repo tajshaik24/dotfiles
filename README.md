@@ -25,7 +25,7 @@ To update another machine: `git pull`, then `./install.sh` if `tcomp/` or the `B
 | --- | --- |
 | `zshrc` | PATH, completion, nvm, conda auto-detection, tcomp, syntax highlighting |
 | `.zsh_prompt/zsh_theme` | Prompt: user@host, path, git dirty/ahead state; branch, SHA and status on the right |
-| `.zsh_prompt/aliases` | Aliases, directory-stack shortcuts, `sync_dotfiles` |
+| `.zsh_prompt/aliases` | `sync_dotfiles`, directory-stack options, `...` global aliases |
 | `.zsh_prompt/git_completion_custom.zsh` | Lists the current branch first in git branch completion |
 | `.zsh_prompt/plugins/git` | Git prompt helpers (from oh-my-zsh) |
 | `.zsh_prompt/private_keys.example` | Template for secrets; copy to `private_keys` (gitignored) |
@@ -46,16 +46,23 @@ As you type, a menu of candidates appears under the prompt: subcommands, flags w
 | `↑` / `↓` | Move through the menu |
 | `↑` on an empty line | Open this directory's recent commands, newest first. `↑` older, `↓` past the newest closes, `Enter` runs, `→` fills in, `Ctrl+G` closes |
 | `→` | Accept the highlighted item (a history row fills the whole command) |
-| `Enter` | Run exactly what you typed; never auto-accepts a suggestion |
+| `Enter` | Expand abbreviations, then run. Never accepts a menu suggestion |
 
-**Abbreviations** live in `tcomp/abbr.tsv`: an abbreviation, a tab, then the expansion, where `%|` marks where the cursor lands. Edits apply immediately. They expand only at the start of a command or after `;`, `|` or `&`, and a yellow `⇥ …` line previews them.
+**Abbreviations** replace shell aliases. They live in `tcomp/abbr.tsv`: an abbreviation, a tab, then the expansion, where `%|` marks where the cursor lands. Edits apply immediately. Unlike aliases, the full command shows on screen and in history.
 
-```
-gc -m	git commit -m "%|"
-gst	git status
-```
+- **Enter** expands every abbreviation that starts a command (at the start of the line, or after `;`, `|` or `&`) and runs the result: `ll src` runs `ls -GplAh src`. Words elsewhere are left alone, so `echo ll` prints `ll`.
+- **Tab** expands the abbreviation just before the cursor without running it. A yellow `⇥ …` line previews it.
+- **`%|`:** if nothing follows, Enter stops there so you can fill it in (`gc -m` gives `git commit -m "▌"`). If arguments follow, a trailing `%|` is dropped (`gpo main` runs `git push origin main`), and an abbreviation with a mid-line `%|` gives way to a shorter one (`gc -m "msg"` runs `git commit -m "msg"`).
 
-Note: `gc` is also an alias (fzf branch checkout). `gc` then `Enter` runs the alias; `gc` then `Tab` expands to `git commit`.
+| Abbreviation | Expands to |
+| --- | --- |
+| `gc`, `gca`, `gc -m` | `git commit`, `… --amend --no-edit`, `… -m "▌"` |
+| `gcb` | `git checkout` with an fzf branch picker |
+| `gco`, `gp`, `gpo`, `gst`, `gl` | `git checkout`, `git push`, `git push origin ▌`, `git status`, `git log --oneline --graph -20` |
+| `l` / `lsa`, `ll` | `ls -Gplah`, `ls -GplAh` |
+| `md`, `rd` | `mkdir -p`, `rmdir` |
+| `-`, `1`…`9` | `cd -`, `cd -N` (directory stack) |
+| `brewup` | `brew update; brew upgrade; brew cleanup; brew doctor` |
 
 ## Secrets and per-machine settings
 

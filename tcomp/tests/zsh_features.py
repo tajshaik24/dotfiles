@@ -153,6 +153,21 @@ try:
     keys('-l', 'echo x'); settle(); keys('Up'); settle()
     assert '◷ echo newest' not in screen() or line().startswith('echo x')
     ok('Up with text typed keeps tcomp behaviour')
+    clear()
+
+    # 6. Enter expands abbreviations in command position, like aliases
+    keys('-l', 'md made/deep'); keys('Enter'); wait((repo / 'made/deep').is_dir, 'md ran as mkdir -p')
+    settle()
+    assert 'mkdir -p made/deep' in (cfg / 'history.tsv').read_text(), 'history should store the expansion'
+    ok('Enter: md made/deep → mkdir -p made/deep (stored expanded in history)')
+    keys('-l', 'echo ll > said.txt'); keys('Enter'); wait(lambda: (repo / 'said.txt').exists(), 'echo ran')
+    wait(lambda: (repo / 'said.txt').read_text() == 'll\n', 'argument ll must not expand')
+    ok('Enter leaves abbreviations in argument position alone')
+    settle()
+    keys('-l', 'gc -m'); keys('Enter'); wait(lambda: line().startswith('git commit -m ""'), 'gc -m expanded, not run'); settle()
+    keys('-l', 'msg'); wait(lambda: line().startswith('git commit -m "msg"'), 'cursor inside quotes')
+    ok('Enter on gc -m stops at %| for the message instead of running')
+    clear()
     print(f'zsh features: all {len(passed)} checks OK')
     shutil.rmtree(SHOTS, ignore_errors=True)
 finally:

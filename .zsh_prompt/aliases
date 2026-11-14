@@ -1,8 +1,9 @@
-alias brewup="brew update; brew upgrade; brew cleanup; brew doctor"
-# Pick a branch with fzf (plain names, so the current branch's "* " is not passed to git)
-alias gc='git checkout "$(git branch --format="%(refname:short)" | fzf)"'
+# Short commands (ll, gst, md, 1-9, brewup, ...) are tcomp abbreviations in
+# tcomp/abbr.tsv: they expand to the full command when you press Enter or Tab.
+# This file keeps what abbreviations can't do.
 
-sync_dotfiles(){
+# Stage all dotfile changes and show what would be committed.
+sync_dotfiles() {
   (
     cd ~/Developer/dotfiles || return
     git add -A
@@ -15,28 +16,13 @@ sync_dotfiles(){
   )
 }
 
+# Directory stack: every cd is remembered (jump back with -, 1-9).
 setopt auto_pushd
 setopt pushd_ignore_dups
 setopt pushdminus
 
+# Global aliases expand anywhere in a line: cd ..., ls ..../src
 alias -g ...='../..'
 alias -g ....='../../..'
 alias -g .....='../../../..'
 alias -g ......='../../../../..'
-
-alias -- -='cd -'
-alias 1='cd -'
-alias 2='cd -2'
-alias 3='cd -3'
-alias 4='cd -4'
-alias 5='cd -5'
-alias 6='cd -6'
-alias 7='cd -7'
-alias 8='cd -8'
-alias 9='cd -9'
-
-alias md='mkdir -p'
-alias rd=rmdir
-alias lsa='ls -Gplah'
-alias l='ls -Gplah'
-alias ll='ls -GplAh'
