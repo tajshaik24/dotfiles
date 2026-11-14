@@ -17,3 +17,6 @@
 *.swp
 *.swo
 *~
+
+# tcomp build output
+tcomp/target/

@@ -1,13 +1,13 @@
-"""Run: python3 rfig/tests/zsh_features.py (needs tmux and rfig on PATH).
+"""Run: python3 tcomp/tests/zsh_features.py (needs tmux and tcomp on PATH).
 
 Tab acceptance, abbreviations, the empty-line history menu and flag descriptions in zsh."""
 import os, subprocess, tempfile, time, shutil, sys
 from pathlib import Path
 
-RFIG = Path(__file__).resolve().parents[1]
-SHOTS = Path(tempfile.mkdtemp(prefix='rfig-shots-'))
+TCOMP = Path(__file__).resolve().parents[1]
+SHOTS = Path(tempfile.mkdtemp(prefix='tcomp-shots-'))
 
-temp = tempfile.mkdtemp(prefix='rfigx-')
+temp = tempfile.mkdtemp(prefix='tcompx-')
 home = Path(temp)
 repo = home / 'repo'; repo.mkdir()
 other = home / 'other'; other.mkdir()
@@ -19,19 +19,19 @@ sh('git', 'remote', 'add', 'origin', str(home / 'remote.git'))
 (repo / 'src').mkdir(); (repo / 'docs').mkdir(); (repo / 'README.md').write_text('hi')
 (home / 'Projects').mkdir(); (home / 'Music').mkdir()
 
-cfg = home / '.config/rfig'; cfg.mkdir(parents=True)
-shutil.copy(RFIG / 'abbr.tsv', cfg / 'abbr.tsv')
+cfg = home / '.config/tcomp'; cfg.mkdir(parents=True)
+shutil.copy(TCOMP / 'abbr.tsv', cfg / 'abbr.tsv')
 (cfg / 'history.tsv').write_text(''.join(f'{repo}\x1f{c}\n' for c in [
     'git status', 'echo first', 'ls -la src', 'echo first', 'git log --oneline', 'echo newest']) +
     f'{other}\x1fecho elsewhere\n')
-bins = home / 'bin'; bins.mkdir(); (bins / 'rfig').symlink_to(shutil.which('rfig') or sys.exit('rfig not on PATH: brew bundle first'))
+bins = home / 'bin'; bins.mkdir(); (bins / 'tcomp').symlink_to(shutil.which('tcomp') or sys.exit('tcomp not on PATH: brew bundle first'))
 (home / '.zshrc').write_text(f"""PROMPT='T> '
 autoload -Uz compinit; compinit -D
-source {RFIG}/rfig.zsh
+source {TCOMP}/tcomp.zsh
 """)
 env = dict(os.environ, HOME=temp, ZDOTDIR=temp, XDG_CONFIG_HOME=str(home / '.config'),
            PATH=f'{bins}:' + os.environ['PATH'], TERM='xterm-256color', LANG='C.UTF-8', LC_ALL='C.UTF-8')
-tm = ['tmux', '-u', '-L', f'rfigx-{os.getpid()}', '-f', '/dev/null']
+tm = ['tmux', '-u', '-L', f'tcompx-{os.getpid()}', '-f', '/dev/null']
 def call(*a): return subprocess.check_output(tm + list(a), env=env, text=True, timeout=5)
 def keys(*a): call('send-keys', '-t', 't', *a)
 def raw(): return call('capture-pane', '-p', '-t', 't')
@@ -152,7 +152,7 @@ try:
     ok('Ctrl+G closes the menu')
     keys('-l', 'echo x'); settle(); keys('Up'); settle()
     assert '◷ echo newest' not in screen() or line().startswith('echo x')
-    ok('Up with text typed keeps rfig behaviour')
+    ok('Up with text typed keeps tcomp behaviour')
     print(f'zsh features: all {len(passed)} checks OK')
 finally:
     subprocess.run(tm + ['kill-server'], capture_output=True)

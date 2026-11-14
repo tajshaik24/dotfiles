@@ -13,7 +13,7 @@ alias brew="arch -arm64 $HOMEBREW_PREFIX/bin/brew"
 
 # C++ compilation
 export LDFLAGS="-L/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk/usr/lib -L$HOMEBREW_PREFIX/opt/openblas/lib -L$HOMEBREW_PREFIX/opt/openssl@3/lib"
-export CPPFLAGS="-I/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk/usr/lib -I$HOMEBREW_PREFIX/opt/openssl@3/include -I$HOMEBREW_PREFIX/opt/openblas/include"
+export CPPFLAGS="-I/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk/usr/include -I$HOMEBREW_PREFIX/opt/openssl@3/include -I$HOMEBREW_PREFIX/opt/openblas/include"
 
 # ── PATH (deduplicated; earlier entries win) ──────────────────────────
 export GOPATH="$HOME/go"
@@ -23,7 +23,7 @@ export NVM_DIR="$HOME/.nvm"
 typeset -U path
 path=(
   "$HOME/.bin"                                   # personal scripts
-  "$HOME/.local/bin"                             # Claude Code
+  "$HOME/.local/bin"                             # tcomp, Claude Code
   "$BUN_INSTALL/bin"
   "$HOMEBREW_PREFIX/bin"
   "$HOMEBREW_PREFIX/sbin"
@@ -34,7 +34,7 @@ path=(
 )
 
 # ── Completion ────────────────────────────────────────────────────────
-# Plain compinit (rfig provides the inline suggestions). Rebuild the dump at most once a day.
+# Plain compinit (tcomp provides the inline suggestions). Rebuild the dump at most once a day.
 fpath=("$HOMEBREW_PREFIX/share/zsh/site-functions" $fpath)
 autoload -Uz compinit
 zcompdump=(${ZDOTDIR:-$HOME}/.zcompdump(N.mh-24))
@@ -81,13 +81,12 @@ unset file
 [ -f ~/.zshrc.local ] && source ~/.zshrc.local
 
 # ── Line editor plugins (keep last) ───────────────────────────────────
-# rfig: inline command suggestions. The zsh script is vendored in this repo
-# (rfig/rfig.zsh: Tab accepts, abbreviations, Up-on-empty history menu);
-# the binary comes from Homebrew. Falls back to rfig's stock script.
-rfig_zsh="${${:-$HOME/.zshrc}:A:h}/rfig/rfig.zsh"
-[ -r "$rfig_zsh" ] || rfig_zsh="$HOME/.config/rfig/rfig.zsh"
-(( $+commands[rfig] )) && [ -r "$rfig_zsh" ] && source "$rfig_zsh"
-unset rfig_zsh
+# tcomp: inline suggestions. Binary built by install.sh; script sourced from
+# the repo so edits apply in new shells.
+tcomp_zsh="${${:-$HOME/.zshrc}:A:h}/tcomp/tcomp.zsh"
+(( $+commands[tcomp] )) && [ -r "$tcomp_zsh" ] && source "$tcomp_zsh"
+unset tcomp_zsh
 # Syntax highlighting must be sourced after every other widget is defined.
 [ -r "$HOMEBREW_PREFIX/share/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh" ] \
   && source "$HOMEBREW_PREFIX/share/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh"
+

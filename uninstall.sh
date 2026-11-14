@@ -1,36 +1,27 @@
-#!/bin/bash
+#!/usr/bin/env bash
+# Remove the links and tcomp binary created by install.sh. Leaves Homebrew
+# packages, ~/.config/tcomp (history), and the repo itself untouched.
+set -euo pipefail
 
-# Dotfiles Uninstallation Script
-# This script removes symlinks created by install.sh
+DOTFILES_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-set -e
+# Remove a link only if it points into this repo.
+unlink_if_ours() {
+  if [ -L "$1" ] && [[ "$(readlink "$1")" == "$DOTFILES_DIR"/* ]]; then
+    rm "$1"
+    echo "  ✓ Removed $1"
+  fi
+}
 
 echo "🗑️  Uninstalling dotfiles..."
-
-# Preserve private_keys before removing symlink
-PRIVATE_KEYS_BACKUP=""
-if [ -L ~/.zsh_prompt ] && [ -f ~/.zsh_prompt/private_keys ]; then
-    echo "🔐 Backing up private_keys file..."
-    PRIVATE_KEYS_BACKUP="$HOME/.zsh_prompt_private_keys_backup"
-    cp ~/.zsh_prompt/private_keys "$PRIVATE_KEYS_BACKUP"
+unlink_if_ours ~/.zshrc
+unlink_if_ours ~/.zsh_prompt
+unlink_if_ours ~/.tmux.conf
+unlink_if_ours ~/.vimrc
+unlink_if_ours ~/.config/tcomp/abbr.tsv
+if [ -x ~/.local/bin/tcomp ]; then
+  rm ~/.local/bin/tcomp
+  echo "  ✓ Removed ~/.local/bin/tcomp"
 fi
 
-# Remove symlinks
-echo "Removing symlinks..."
-[ -L ~/.zshrc ] && rm ~/.zshrc && echo "  ✓ Removed ~/.zshrc"
-[ -L ~/.tmux.conf ] && rm ~/.tmux.conf && echo "  ✓ Removed ~/.tmux.conf"
-[ -L ~/.vimrc ] && rm ~/.vimrc && echo "  ✓ Removed ~/.vimrc"
-[ -L ~/.zsh_prompt ] && rm ~/.zsh_prompt && echo "  ✓ Removed ~/.zsh_prompt"
-[ -L ~/.config/rfig/abbr.tsv ] && rm ~/.config/rfig/abbr.tsv && echo "  ✓ Removed ~/.config/rfig/abbr.tsv"
-
-# Notify about private_keys backup
-if [ -n "$PRIVATE_KEYS_BACKUP" ] && [ -f "$PRIVATE_KEYS_BACKUP" ]; then
-    echo ""
-    echo "🔐 Your private_keys file was backed up to:"
-    echo "   $PRIVATE_KEYS_BACKUP"
-fi
-
-echo ""
-echo "✅ Dotfiles uninstalled successfully!"
-echo "💡 Your backup files may still exist in ~/dotfiles_backup_* directories"
-echo "💡 To restore from backup, copy files from the backup directory"
+echo "✅ Uninstalled. Backups from install.sh are in ~/dotfiles_backup_*."

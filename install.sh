@@ -1,117 +1,96 @@
-#!/bin/bash
+#!/usr/bin/env bash
+# Install these dotfiles: link config files into $HOME, install Homebrew
+# packages, and build tcomp. Safe to run repeatedly.
+set -euo pipefail
 
-# Dotfiles Installation Script
-# This script creates symlinks from home directory to dotfiles
-
-set -e
-
-DOTFILES_DIR="$HOME/Developer/dotfiles"
+DOTFILES_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 BACKUP_DIR="$HOME/dotfiles_backup_$(date +%Y%m%d_%H%M%S)"
+TCOMP_DIR="$HOME/.config/tcomp"
 
-echo "🚀 Installing dotfiles..."
-
-# Create backup directory for any existing non-symlink files
-BACKUP_CREATED=false
-backup_if_real() {
-    local src="$1"
-    local target="$2"
-    # Only backup if it exists AND is not already a symlink into our dotfiles
-    if [ -e "$src" ] && ! [ -L "$src" ]; then
-        if [ "$BACKUP_CREATED" = false ]; then
-            echo "📦 Backing up existing dotfiles to $BACKUP_DIR"
-            mkdir -p "$BACKUP_DIR"
-            BACKUP_CREATED=true
-        fi
-        cp -r "$src" "$target"
-    fi
+# Move a real (non-symlink) file aside before it is replaced by a link.
+backup() {
+  if [ -e "$1" ] && [ ! -L "$1" ]; then
+    mkdir -p "$BACKUP_DIR"
+    mv "$1" "$BACKUP_DIR/"
+    echo "📦 Backed up $1 to $BACKUP_DIR"
+  fi
 }
 
-backup_if_real ~/.zshrc "$BACKUP_DIR/"
-backup_if_real ~/.tmux.conf "$BACKUP_DIR/"
-backup_if_real ~/.vimrc "$BACKUP_DIR/"
-backup_if_real ~/.zsh_prompt "$BACKUP_DIR/"
+# link <path in repo> <target>; -n replaces an existing directory link
+# instead of creating a link inside it.
+link() {
+  backup "$2"
+  ln -sfn "$DOTFILES_DIR/$1" "$2"
+}
 
-# Preserve private_keys if it exists
-PRIVATE_KEYS_BACKUP=""
-if [ -f ~/.zsh_prompt/private_keys ]; then
-    echo "🔐 Preserving existing private_keys file..."
-    PRIVATE_KEYS_BACKUP=$(mktemp)
-    cp ~/.zsh_prompt/private_keys "$PRIVATE_KEYS_BACKUP"
-fi
-
-# Remove existing files/symlinks
-echo "🗑️  Removing existing dotfiles..."
-rm -f ~/.zshrc ~/.tmux.conf ~/.vimrc
-rm -rf ~/.zsh_prompt
-
-# Create symlinks
-echo "🔗 Creating symlinks..."
-ln -sf "$DOTFILES_DIR/zshrc" ~/.zshrc
-ln -sf "$DOTFILES_DIR/.zsh_prompt" ~/.zsh_prompt
-
-# Optional files (only link if they exist in dotfiles)
-[ -f "$DOTFILES_DIR/tmux.conf" ] && ln -sf "$DOTFILES_DIR/tmux.conf" ~/.tmux.conf
-[ -f "$DOTFILES_DIR/vimrc" ] && ln -sf "$DOTFILES_DIR/vimrc" ~/.vimrc
-
-# Restore private_keys if it was backed up
-if [ -n "$PRIVATE_KEYS_BACKUP" ] && [ -f "$PRIVATE_KEYS_BACKUP" ]; then
-    echo "🔐 Restoring private_keys file..."
-    cp "$PRIVATE_KEYS_BACKUP" ~/.zsh_prompt/private_keys
-    chmod 700 ~/.zsh_prompt/private_keys
-    rm "$PRIVATE_KEYS_BACKUP"
-elif [ ! -f ~/.zsh_prompt/private_keys ] && [ -f "$DOTFILES_DIR/.zsh_prompt/private_keys.example" ]; then
-    echo "💡 No private_keys found. Copy private_keys.example to private_keys and add your keys:"
-    echo "   cp ~/.zsh_prompt/private_keys.example ~/.zsh_prompt/private_keys"
-fi
-
-# Packages (rfig, zsh-syntax-highlighting, fzf, tmux) from the Brewfile
-if command -v brew >/dev/null 2>&1; then
-    # zsh-autocomplete conflicts with rfig; remove it and its state if present
-    if brew list zsh-autocomplete >/dev/null 2>&1; then
-        echo "🧹 Removing zsh-autocomplete (replaced by rfig)..."
-        brew uninstall zsh-autocomplete
-        rm -rf "$HOME/.local/state/zsh-autocomplete"
-        rm -f "${ZDOTDIR:-$HOME}"/.zcompdump*
-    fi
-    echo "📦 Installing Homebrew packages from Brewfile..."
-    brew bundle --file="$DOTFILES_DIR/Brewfile"
-    if [ ! -e "$HOME/.config/rfig/commands.txt" ]; then
-        echo "⚙️  Running rfig setup (one-time command scan)..."
-        rfig setup --shell zsh
-        # zshrc already sources rfig; drop the line setup appends to it
-        sed -i.bak '/^source ".*\/\.config\/rfig\/rfig\.zsh"$/d' "$DOTFILES_DIR/zshrc"
-        rm -f "$DOTFILES_DIR/zshrc.bak"
-    fi
+# Homebrew: native arm64 even when this script runs under Rosetta.
+if [ -x /opt/homebrew/bin/brew ]; then
+  brew() { arch -arm64 /opt/homebrew/bin/brew "$@"; }
+  eval "$(/opt/homebrew/bin/brew shellenv)"
+elif [ -x /usr/local/bin/brew ]; then
+  eval "$(/usr/local/bin/brew shellenv)"
 else
-    echo "💡 Homebrew not found. Install it, then re-run ./install.sh"
+  echo "❌ Homebrew is required. Install it from https://brew.sh, then re-run $0" >&2
+  exit 1
 fi
 
-# rfig abbreviations (gst → git status, ...) live in this repo
-mkdir -p "$HOME/.config/rfig"
-backup_if_real "$HOME/.config/rfig/abbr.tsv" "$BACKUP_DIR/"
-ln -sf "$DOTFILES_DIR/rfig/abbr.tsv" "$HOME/.config/rfig/abbr.tsv"
+echo "🔗 Linking config files..."
+link zshrc ~/.zshrc
+link .zsh_prompt ~/.zsh_prompt
+link tmux.conf ~/.tmux.conf
+link vimrc ~/.vimrc
+# private_keys is gitignored; keep one from a replaced ~/.zsh_prompt directory.
+if [ -f "$BACKUP_DIR/.zsh_prompt/private_keys" ] && [ ! -f "$DOTFILES_DIR/.zsh_prompt/private_keys" ]; then
+  cp "$BACKUP_DIR/.zsh_prompt/private_keys" "$DOTFILES_DIR/.zsh_prompt/private_keys"
+  chmod 600 "$DOTFILES_DIR/.zsh_prompt/private_keys"
+  echo "🔐 Kept your existing private_keys"
+fi
 
-# Optional: customize the machine name shown in the prompt.
-# Stored as PROMPT_HOSTNAME in the gitignored ~/.zsh_prompt/private_keys
-# (the theme uses ${PROMPT_HOSTNAME:-%m}, falling back to the real hostname).
+echo "📦 Installing Homebrew packages..."
+brew bundle --quiet --file="$DOTFILES_DIR/Brewfile"
+
+# One-time migration from the old setup (Homebrew rfig, zsh-autocomplete).
+# Runs after brew bundle so rust stays installed. No-op on new machines.
+if brew list zsh-autocomplete >/dev/null 2>&1; then
+  echo "🧹 Removing zsh-autocomplete (conflicts with tcomp)..."
+  brew uninstall zsh-autocomplete
+  rm -rf "$HOME/.local/state/zsh-autocomplete" "${ZDOTDIR:-$HOME}"/.zcompdump*
+fi
+if brew list rfig >/dev/null 2>&1; then
+  echo "🧹 Removing Homebrew rfig (replaced by tcomp)..."
+  brew uninstall rfig
+fi
+if brew tap | grep -qx tamia6/tap; then
+  brew untap tamia6/tap
+fi
+rm -f "$HOME/.local/bin/rfig"
+if [ -d "$HOME/.config/rfig" ] && [ ! -e "$TCOMP_DIR" ]; then
+  echo "🚚 Moving ~/.config/rfig to $TCOMP_DIR (keeps your history)..."
+  mv "$HOME/.config/rfig" "$TCOMP_DIR"
+  rm -rf "$TCOMP_DIR"/rfig.zsh "$TCOMP_DIR"/abbr.tsv "$TCOMP_DIR"/generated/rfig.* \
+    "$TCOMP_DIR"/help/rfig "$TCOMP_DIR"/options/rfig.tsv "$TCOMP_DIR"/fallback/rfig.tsv
+fi
+
+echo "🦀 Building tcomp..."
+cargo install --quiet --locked --force --path "$DOTFILES_DIR/tcomp" --root "$HOME/.local"
+mkdir -p "$TCOMP_DIR"
+link tcomp/abbr.tsv "$TCOMP_DIR/abbr.tsv"
+if [ ! -f "$TCOMP_DIR/commands.txt" ]; then
+  echo "⚙️  Indexing commands for tcomp (one time)..."
+  "$HOME/.local/bin/tcomp" setup --shell zsh
+fi
+
+# Optional machine name for the prompt, stored in the gitignored private_keys.
 if [ -t 0 ]; then
-    printf "🏷  Custom machine name for the prompt? (leave blank to skip): "
-    read -r PROMPT_NAME || PROMPT_NAME=""
-    if [ -n "$PROMPT_NAME" ]; then
-        KEYS_FILE="$HOME/.zsh_prompt/private_keys"
-        touch "$KEYS_FILE"
-        chmod 700 "$KEYS_FILE"
-        # Replace any existing PROMPT_HOSTNAME line, then append the new one
-        sed -i.bak '/^export PROMPT_HOSTNAME=/d' "$KEYS_FILE" 2>/dev/null || true
-        rm -f "$KEYS_FILE.bak"
-        echo "export PROMPT_HOSTNAME=\"$PROMPT_NAME\"" >> "$KEYS_FILE"
-        echo "✅ Prompt will show: $PROMPT_NAME"
-    fi
+  read -r -p "🏷  Machine name for the prompt (blank to skip): " prompt_name || prompt_name=""
+  if [ -n "$prompt_name" ]; then
+    keys="$DOTFILES_DIR/.zsh_prompt/private_keys"
+    touch "$keys" && chmod 600 "$keys"
+    grep -v '^export PROMPT_HOSTNAME=' "$keys" > "$keys.tmp" || true
+    printf 'export PROMPT_HOSTNAME=%q\n' "$prompt_name" >> "$keys.tmp"
+    mv "$keys.tmp" "$keys"
+    echo "✅ Prompt will show: $prompt_name"
+  fi
 fi
 
-echo "✅ Dotfiles installed successfully!"
-if [ "$BACKUP_CREATED" = true ]; then
-    echo "📝 Backup saved to: $BACKUP_DIR"
-fi
-echo ""
-echo "🔄 To apply changes, run: source ~/.zshrc"
+echo "✅ Done. Open a new terminal (or run: exec zsh)."

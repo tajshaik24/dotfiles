@@ -1,129 +1,69 @@
-# Dotfiles
+# dotfiles
 
-My personal shell configuration and dotfiles, synchronized across machines.
+My macOS shell setup: zsh, a custom prompt, tmux, vim, and **tcomp**, my own inline command completion.
 
-## What's Included
-
-- **Brewfile** - Homebrew packages the shell config depends on (rfig, zsh-syntax-highlighting, fzf, tmux); `install.sh` runs it
-- **rfig/** - rfig zsh integration with Tab-accept, abbreviations and an Up-arrow history menu (`rfig.zsh`), abbreviations (`abbr.tsv`), and a tmux test
-- **zshrc** - Main ZSH configuration: PATH, completion, nvm, auto-detected conda, rfig, syntax highlighting
-- **zsh_prompt/** - Custom ZSH prompt, aliases, and themes
-  - `aliases` - Custom aliases and functions (includes `sync_dotfiles`)
-  - `zsh_theme` - Custom prompt theme
-  - `git_completion_custom.zsh` - Git completion settings
-  - `plugins/git` - Git helper functions
-  - `private_keys.example` - Template for your private keys
-  - `private_keys` - Your actual private keys (gitignored, not tracked)
-
-## Quick Start
-
-### Fresh Installation
+## Install
 
 ```bash
 git clone git@github.com:tajshaik24/dotfiles.git ~/Developer/dotfiles
-~/Developer/dotfiles/install.sh   # links files, installs the Brewfile, sets up rfig
+~/Developer/dotfiles/install.sh
 exec zsh
 ```
 
-### Updating on Existing Machine
+Requires [Homebrew](https://brew.sh). `install.sh` is safe to re-run. It:
 
-```bash
-cd ~/Developer/dotfiles
-git pull
-source ~/.zshrc
-```
+1. Links `~/.zshrc`, `~/.zsh_prompt`, `~/.tmux.conf` and `~/.vimrc` to this repo, moving any existing real files to `~/dotfiles_backup_<timestamp>/`.
+2. Installs the `Brewfile` (rust, zsh-syntax-highlighting, fzf, tmux).
+3. Builds tcomp into `~/.local/bin`, links its abbreviations, and indexes your commands once.
+4. Optionally asks for a machine name to show in the prompt.
 
-### Syncing Changes
+To update another machine: `git pull`, then `./install.sh` if `tcomp/` or the `Brewfile` changed. Otherwise just open a new shell.
 
-After making changes to your dotfiles:
+## Layout
 
-```bash
-cd ~/Developer/dotfiles
-git add .
-git commit -m "Update dotfiles"
-git push
-```
-
-## Uninstall
-
-```bash
-cd ~/Developer/dotfiles
-chmod +x uninstall.sh
-./uninstall.sh
-```
-
-## How It Works
-
-The install script creates symlinks from your home directory to this repository:
-- `~/.zshrc` → `~/Developer/dotfiles/zshrc`
-- `~/.zsh_prompt/` → `~/Developer/dotfiles/.zsh_prompt/`
-- `~/.tmux.conf` → `~/Developer/dotfiles/tmux.conf` (if exists)
-- `~/.vimrc` → `~/Developer/dotfiles/vimrc` (if exists)
-
-This means any changes you make are automatically tracked in the repository.
-
-During install you're also prompted (optionally) for a custom machine name shown in the prompt, stored as `PROMPT_HOSTNAME` in the gitignored `~/.zsh_prompt/private_keys`.
-
-## Managing Private Keys
-
-The `private_keys` file contains sensitive API keys and credentials that should **never** be committed to git.
-
-### First Time Setup
-```bash
-# Copy the example file
-cp ~/.zsh_prompt/private_keys.example ~/.zsh_prompt/private_keys
-
-# Edit with your actual keys
-vim ~/.zsh_prompt/private_keys
-```
-
-### On New Machines
-The install script will:
-- ✅ Preserve your existing `private_keys` if you already have one
-- 💡 Prompt you to create one from the example if you don't
-
-You'll need to manually copy your keys to new machines (use a password manager or secure method).
-
-## Completion (rfig)
-
-Inline command suggestions come from [rfig](https://github.com/tamia6/rfig). The binary comes from Homebrew; the zsh script is vendored at `rfig/rfig.zsh` (upstream v0.3.1 plus local features) and `zshrc` sources it, followed by zsh-syntax-highlighting (which must load last). `install.sh` installs rfig, runs its one-time `rfig setup`, and links `~/.config/rfig/abbr.tsv` to `rfig/abbr.tsv`.
-
-| Key | Behavior |
+| Path | What it is |
 | --- | --- |
-| `Tab` | Expand an abbreviation, else accept the highlighted candidate (skipping `◷` history rows), else native completion |
+| `zshrc` | PATH, completion, nvm, conda auto-detection, tcomp, syntax highlighting |
+| `.zsh_prompt/zsh_theme` | Prompt: user@host, path, git dirty/ahead state; branch, SHA and status on the right |
+| `.zsh_prompt/aliases` | Aliases, directory-stack shortcuts, `sync_dotfiles` |
+| `.zsh_prompt/git_completion_custom.zsh` | Lists the current branch first in git branch completion |
+| `.zsh_prompt/plugins/git` | Git prompt helpers (from oh-my-zsh) |
+| `.zsh_prompt/private_keys.example` | Template for secrets; copy to `private_keys` (gitignored) |
+| `.zshrc.local.example` | Template for per-machine settings in `~/.zshrc.local` (gitignored) |
+| `tmux.conf` | Prefix `Ctrl+Q`, mouse, vi copy mode, Solarized colors |
+| `vimrc` | Basic vim settings |
+| `tcomp/` | tcomp source, zsh script, abbreviations and tests ([details](tcomp/README.md)) |
+| `install.sh` / `uninstall.sh` | Set up / remove the links and the tcomp binary |
+
+## tcomp: inline completion
+
+As you type, a menu of candidates appears under the prompt: subcommands, flags with descriptions, paths, branches, and `◷` rows from commands you've run in the current directory.
+
+| Key | Action |
+| --- | --- |
+| `Tab` | Expand an abbreviation; else accept the highlighted candidate (skipping `◷` history rows); else native completion |
 | `Shift+Tab` | Native zsh completion |
-| `↑` on an empty line | Menu of this directory's recent commands, newest first. `↑` older, `↓` past newest closes, `Enter` runs, `→` fills, `Ctrl+G` closes |
+| `↑` / `↓` | Move through the menu |
+| `↑` on an empty line | Open this directory's recent commands, newest first. `↑` older, `↓` past the newest closes, `Enter` runs, `→` fills in, `Ctrl+G` closes |
+| `→` | Accept the highlighted item (a history row fills the whole command) |
+| `Enter` | Run exactly what you typed; never auto-accepts a suggestion |
 
-**Abbreviations:** edit `rfig/abbr.tsv` (abbreviation, a tab, expansion; `%|` marks where the cursor lands). Changes apply on the next keystroke. They expand only at the start of a command or after `;`, `|`, `&`, and a yellow `⇥ …` line previews them.
+**Abbreviations** live in `tcomp/abbr.tsv`: an abbreviation, a tab, then the expansion, where `%|` marks where the cursor lands. Edits apply immediately. They expand only at the start of a command or after `;`, `|` or `&`, and a yellow `⇥ …` line previews them.
 
-**Upgrading rfig:** `brew upgrade rfig`. If upstream changes its `rfig.zsh`, merge those changes into `rfig/rfig.zsh` by hand, then run `python3 rfig/tests/zsh_features.py` (expects `all 18 checks OK`).
-
-Do not install `zsh-autocomplete`: it rebinds the same line-editor widgets and conflicts with rfig.
-
-`rfig setup` appends its own `source ...` line to `~/.zshrc` (which is `zshrc` in this repo); `install.sh` removes it. If you run `rfig setup` by hand, delete that line before committing.
-
-## Conda Configuration
-
-The `zshrc` file auto-detects conda installations across different machines by checking common locations:
-- `/opt/homebrew/Caskroom/miniconda/base` (Homebrew on Apple Silicon)
-- `~/miniconda3` or `~/anaconda3` (user installations)
-- And several other common paths
-
-No manual configuration needed - just install conda and it will be detected automatically.
-
-### Avoiding doubled env prefix in the prompt
-
-The custom theme renders the conda env name itself (via `precmd_conda_info` in `zsh_prompt/zsh_theme`). Conda's shell hook also prepends the env name by default, which causes `(envname)` to appear twice when an env is active. To let the theme own the prefix, disable conda's:
-
-```bash
-conda config --set changeps1 false
+```
+gc -m	git commit -m "%|"
+gst	git status
 ```
 
-This writes `changeps1: false` to `~/.condarc` and only needs to be run once per machine.
+Note: `gc` is also an alias (fzf branch checkout). `gc` then `Enter` runs the alias; `gc` then `Tab` expands to `git commit`.
+
+## Secrets and per-machine settings
+
+- `~/.zsh_prompt/private_keys` (API keys, `PROMPT_HOSTNAME`) is sourced by `zshrc` and gitignored. Start from `private_keys.example`, and copy it between machines with a password manager.
+- `~/.zshrc.local` holds machine-specific PATH entries and aliases, and is gitignored.
 
 ## Notes
 
-- The `private_keys` file is gitignored for security and preserved during install/uninstall
-- Backups are automatically created during installation
-- All scripts are safe to run multiple times
-- Conda initialization adapts to different installation locations
+- **Conda:** the prompt shows the active env itself. Run `conda config --set changeps1 false` once per machine so it doesn't appear twice.
+- **Don't install zsh-autocomplete:** it rebinds the same widgets as tcomp. `install.sh` removes it if present.
+- **Uninstall:** `./uninstall.sh` removes the links and `~/.local/bin/tcomp`. Homebrew packages and `~/.config/tcomp` (history) are kept.

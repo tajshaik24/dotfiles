@@ -1,12 +1,6 @@
-set wildmenu
-set nocompatible              " be iMproved, required
-filetype off                  " required
-
-" Set compatibility to Vim only.
+" Vim only, no vi compatibility. Must come first: it resets other options.
 set nocompatible
-
-" Helps force plug-ins to load correctly when it is turned back on below.
-filetype off
+set wildmenu
 
 " Turn on syntax highlighting.
 syntax on
@@ -82,4 +76,4 @@ vnoremap <Space> zf
 
 " Automatically save and load folds
 autocmd BufWinLeave *.* mkview
-autocmd BufWinEnter *.* silent loadview"
+autocmd BufWinEnter *.* silent loadview

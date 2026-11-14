@@ -1,5 +1,6 @@
 alias brewup="brew update; brew upgrade; brew cleanup; brew doctor"
-alias gc='git checkout $(git branch | fzf)'
+# Pick a branch with fzf (plain names, so the current branch's "* " is not passed to git)
+alias gc='git checkout "$(git branch --format="%(refname:short)" | fzf)"'
 
 sync_dotfiles(){
   (

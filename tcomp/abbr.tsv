@@ -1,4 +1,4 @@
-# rfig abbreviations: <abbreviation><TAB><expansion>. %| marks the cursor.
+# tcomp abbreviations: <abbreviation><TAB><expansion>. %| marks the cursor.
 gc -m	git commit -m "%|"
 gc	git commit
 gca	git commit --amend --no-edit

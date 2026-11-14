@@ -1,8 +1,7 @@
-if [ -d ~/.zsh_prompt/plugins ]; then
-  for file in ~/.zsh_prompt/plugins/*; do
-    source $file
-  done
-fi
+for plugin in ~/.zsh_prompt/plugins/*(N.); do
+  source "$plugin"
+done
+unset plugin
 
 # Color shortcuts
 RED=$fg[red]

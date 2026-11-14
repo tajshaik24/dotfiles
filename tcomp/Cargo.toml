@@ -1,0 +1,13 @@
+[package]
+name = "tcomp"
+version = "0.0.1"
+edition = "2021"
+description = "Inline terminal command completion and history suggestions for zsh, Bash and Fish"
+license = "MIT"
+repository = "https://github.com/tajshaik24/dotfiles"
+
+[dependencies]
+crossterm = { version = "0.28", features = ["use-dev-tty"] }
+unicode-width = "0.2"
+signal-hook = "0.3"
+libc = "0.2"
