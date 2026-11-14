@@ -21,6 +21,7 @@ echo "Removing symlinks..."
 [ -L ~/.tmux.conf ] && rm ~/.tmux.conf && echo "  ✓ Removed ~/.tmux.conf"
 [ -L ~/.vimrc ] && rm ~/.vimrc && echo "  ✓ Removed ~/.vimrc"
 [ -L ~/.zsh_prompt ] && rm ~/.zsh_prompt && echo "  ✓ Removed ~/.zsh_prompt"
+[ -L ~/.config/rfig/abbr.tsv ] && rm ~/.config/rfig/abbr.tsv && echo "  ✓ Removed ~/.config/rfig/abbr.tsv"
 
 # Notify about private_keys backup
 if [ -n "$PRIVATE_KEYS_BACKUP" ] && [ -f "$PRIVATE_KEYS_BACKUP" ]; then

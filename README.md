@@ -4,7 +4,8 @@ My personal shell configuration and dotfiles, synchronized across machines.
 
 ## What's Included
 
-- **Brewfile** - Homebrew packages the shell config depends on (rfig, zsh-syntax-highlighting, fzf)
+- **Brewfile** - Homebrew packages the shell config depends on (rfig, zsh-syntax-highlighting, fzf, tmux); `install.sh` runs it
+- **rfig/** - rfig zsh integration with Tab-accept, abbreviations and an Up-arrow history menu (`rfig.zsh`), abbreviations (`abbr.tsv`), and a tmux test
 - **zshrc** - Main ZSH configuration: PATH, completion, nvm, auto-detected conda, rfig, syntax highlighting
 - **zsh_prompt/** - Custom ZSH prompt, aliases, and themes
   - `aliases` - Custom aliases and functions (includes `sync_dotfiles`)
@@ -19,19 +20,9 @@ My personal shell configuration and dotfiles, synchronized across machines.
 ### Fresh Installation
 
 ```bash
-# Clone the repository
-git clone <your-repo-url> ~/Developer/dotfiles
-
-# Install dependencies (rfig, zsh-syntax-highlighting, fzf)
-cd ~/Developer/dotfiles
-brew bundle --file=Brewfile
-
-# Run the install script (also installs rfig and runs its one-time setup)
-chmod +x install.sh
-./install.sh
-
-# Reload your shell
-source ~/.zshrc
+git clone git@github.com:tajshaik24/dotfiles.git ~/Developer/dotfiles
+~/Developer/dotfiles/install.sh   # links files, installs the Brewfile, sets up rfig
+exec zsh
 ```
 
 ### Updating on Existing Machine
@@ -95,21 +86,21 @@ You'll need to manually copy your keys to new machines (use a password manager o
 
 ## Completion (rfig)
 
-Inline command suggestions come from [rfig](https://github.com/tamia6/rfig). `zshrc` runs a plain `compinit` and sources `~/.config/rfig/rfig.zsh` if it exists, followed by zsh-syntax-highlighting (which must load last).
+Inline command suggestions come from [rfig](https://github.com/tamia6/rfig). The binary comes from Homebrew; the zsh script is vendored at `rfig/rfig.zsh` (upstream v0.3.1 plus local features) and `zshrc` sources it, followed by zsh-syntax-highlighting (which must load last). `install.sh` installs rfig, runs its one-time `rfig setup`, and links `~/.config/rfig/abbr.tsv` to `rfig/abbr.tsv`.
+
+| Key | Behavior |
+| --- | --- |
+| `Tab` | Expand an abbreviation, else accept the highlighted candidate (skipping `◷` history rows), else native completion |
+| `Shift+Tab` | Native zsh completion |
+| `↑` on an empty line | Menu of this directory's recent commands, newest first. `↑` older, `↓` past newest closes, `Enter` runs, `→` fills, `Ctrl+G` closes |
+
+**Abbreviations:** edit `rfig/abbr.tsv` (abbreviation, a tab, expansion; `%|` marks where the cursor lands). Changes apply on the next keystroke. They expand only at the start of a command or after `;`, `|`, `&`, and a yellow `⇥ …` line previews them.
+
+**Upgrading rfig:** `brew upgrade rfig`. If upstream changes its `rfig.zsh`, merge those changes into `rfig/rfig.zsh` by hand, then run `python3 rfig/tests/zsh_features.py` (expects `all 18 checks OK`).
 
 Do not install `zsh-autocomplete`: it rebinds the same line-editor widgets and conflicts with rfig.
 
-`install.sh` installs rfig automatically. To install it by hand with Homebrew:
-
-```bash
-brew tap tamia6/tap
-brew install rfig
-rfig setup   # one-time: scans commands and links ~/.config/rfig/rfig.zsh
-```
-
-To upgrade later: `brew upgrade rfig`, then open a new shell.
-
-`rfig setup` appends its own `source ...` line to `~/.zshrc` (which is `zshrc` in this repo). `zshrc` already sources rfig, so `install.sh` removes that line. If you run `rfig setup` by hand, delete it before committing.
+`rfig setup` appends its own `source ...` line to `~/.zshrc` (which is `zshrc` in this repo); `install.sh` removes it. If you run `rfig setup` by hand, delete that line before committing.
 
 ## Conda Configuration
 

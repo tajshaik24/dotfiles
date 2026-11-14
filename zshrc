@@ -81,8 +81,13 @@ unset file
 [ -f ~/.zshrc.local ] && source ~/.zshrc.local
 
 # ── Line editor plugins (keep last) ───────────────────────────────────
-# rfig: inline command suggestions (brew install tamia6/tap/rfig && rfig setup)
-[ -r "$HOME/.config/rfig/rfig.zsh" ] && source "$HOME/.config/rfig/rfig.zsh"
+# rfig: inline command suggestions. The zsh script is vendored in this repo
+# (rfig/rfig.zsh: Tab accepts, abbreviations, Up-on-empty history menu);
+# the binary comes from Homebrew. Falls back to rfig's stock script.
+rfig_zsh="${${:-$HOME/.zshrc}:A:h}/rfig/rfig.zsh"
+[ -r "$rfig_zsh" ] || rfig_zsh="$HOME/.config/rfig/rfig.zsh"
+(( $+commands[rfig] )) && [ -r "$rfig_zsh" ] && source "$rfig_zsh"
+unset rfig_zsh
 # Syntax highlighting must be sourced after every other widget is defined.
 [ -r "$HOMEBREW_PREFIX/share/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh" ] \
   && source "$HOMEBREW_PREFIX/share/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh"

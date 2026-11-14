@@ -8,3 +8,4 @@ tap "tamia6/tap"
 brew "tamia6/tap/rfig"            # inline command suggestions (run `rfig setup` once after install)
 brew "zsh-syntax-highlighting"
 brew "fzf"                        # used by the `gc` branch-picker alias
+brew "tmux"                       # tmux.conf; also runs rfig/tests/zsh_features.py

@@ -1,0 +1,9 @@
+# rfig abbreviations: <abbreviation><TAB><expansion>. %| marks the cursor.
+gc -m	git commit -m "%|"
+gc	git commit
+gca	git commit --amend --no-edit
+gst	git status
+gp	git push
+gpo	git push origin %|
+gco	git checkout
+gl	git log --oneline --graph -20
