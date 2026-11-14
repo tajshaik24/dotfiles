@@ -6,19 +6,20 @@ My macOS shell setup: zsh, a custom prompt, tmux, vim, **tcomp** (my own inline 
 
 ```bash
 git clone git@github.com:tajshaik24/dotfiles.git ~/Developer/dotfiles
-~/Developer/dotfiles/install.sh
+~/Developer/dotfiles/install.sh        # shell essentials only (work laptop)
+~/Developer/dotfiles/install.sh --all  # also projects and apps (personal Mac)
 exec zsh
 ```
 
 Requires [Homebrew](https://brew.sh). `install.sh` is safe to re-run. It:
 
 1. Links `~/.zshrc`, `~/.zsh_prompt`, `~/.tmux.conf` and `~/.vimrc` to this repo, moving any existing real files to `~/dotfiles_backup_<timestamp>/`.
-2. Installs everything in the `Brewfile`: shell dependencies, dev tools and apps.
+2. Installs the essentials in `Brewfile`: the shell's dependencies and everyday tools. With `--all`, also the dev tools and apps in `Brewfile.personal`.
 3. Builds tcomp into `~/.local/bin`, links its abbreviations, and indexes your commands once.
 4. Links rex-agent-restore into `~/.local/bin` and sets up its hooks for Claude Code and Cursor (`RAR_AGENTS` in `install.sh`) and its Rex actions.
 5. Optionally asks for a machine name to show in the prompt.
 
-To update another machine: `git pull`, then `./install.sh` if `tcomp/src`, the `Brewfile` or rex-agent-restore's hooks changed. Otherwise just open a new shell.
+To update another machine: `git pull`, then `./install.sh` (add `--all` on a personal Mac) if `tcomp/src`, a Brewfile or rex-agent-restore's hooks changed. Otherwise just open a new shell.
 
 ## Layout
 
@@ -35,7 +36,8 @@ To update another machine: `git pull`, then `./install.sh` if `tcomp/src`, the `
 | `vimrc` | Basic vim settings |
 | `tcomp/` | tcomp source, zsh script, abbreviations and tests ([details](tcomp/README.md)) |
 | `rex-agent-restore/` | Resumes Claude Code and Cursor chats when Rex restores a pane ([details](rex-agent-restore/README.md)) |
-| `Brewfile` | Every tap, formula and app on this Mac |
+| `Brewfile` | Essentials: what the shell setup needs plus everyday tools (always installed) |
+| `Brewfile.personal` | Dev tools for my projects and apps (`install.sh --all`) |
 | `install.sh` / `uninstall.sh` | Set up / remove everything above |
 
 ## tcomp: inline completion

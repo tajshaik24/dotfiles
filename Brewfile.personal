@@ -1,0 +1,20 @@
+# Project tools and personal apps, on top of Brewfile.
+# Installed by: ./install.sh --all
+# List anything installed that's in neither file:
+#   cat Brewfile Brewfile.personal | brew bundle cleanup --file=-
+
+# Dev tools
+brew "go"                         # GOPATH set in zshrc
+brew "nvm"                        # Node versions (Homebridge runs on nvm's Node 22)
+brew "uv"                         # Python for projects (peeps uses uv-managed 3.12)
+brew "openssl@3"                  # build flags in zshrc (LDFLAGS/CPPFLAGS)
+brew "poppler"                    # PDF tools: pdftotext, pdftoppm
+brew "xcodegen"                   # Xcode projects from a spec
+brew "openjdk@17"                 # Android builds (muslim-smart-home sets JAVA_HOME to it)
+
+# Apps
+cask "android-commandlinetools"   # Android SDK for muslim-smart-home
+cask "claude"
+cask "cursor"
+cask "notion-calendar"
+cask "zoom"

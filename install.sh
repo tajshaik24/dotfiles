@@ -1,7 +1,16 @@
 #!/usr/bin/env bash
 # Install these dotfiles: link config files into $HOME, install Homebrew
 # packages, and build tcomp. Safe to run repeatedly.
+#   ./install.sh        shell essentials only (Brewfile); fine for a work laptop
+#   ./install.sh --all  also projects and apps (Brewfile.personal)
 set -euo pipefail
+
+BREWFILES=(Brewfile)
+case "${1:-}" in
+  "") ;;
+  --all) BREWFILES+=(Brewfile.personal) ;;
+  *) echo "Usage: $0 [--all]" >&2; exit 2 ;;
+esac
 
 DOTFILES_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 BACKUP_DIR="$HOME/dotfiles_backup_$(date +%Y%m%d_%H%M%S)"
@@ -49,15 +58,17 @@ if [ -f "$BACKUP_DIR/.zsh_prompt/private_keys" ] && [ ! -f "$DOTFILES_DIR/.zsh_p
   echo "🔐 Kept your existing private_keys"
 fi
 
-echo "📦 Installing Homebrew packages..."
-# Homebrew won't load formulae from third-party taps until each is trusted.
-# Trust exactly the user/tap/formula entries listed in the Brewfile.
-sed -n 's/^brew "\([^"/]*\/[^"/]*\/[^"]*\)".*/\1/p' "$DOTFILES_DIR/Brewfile" |
-  while read -r formula; do
-    brew tap "${formula%/*}" >/dev/null
-    brew trust --formula "$formula" >/dev/null
-  done
-brew bundle --quiet --file="$DOTFILES_DIR/Brewfile"
+for brewfile in "${BREWFILES[@]}"; do
+  echo "📦 Installing Homebrew packages from $brewfile..."
+  # Homebrew won't load formulae from third-party taps until each is trusted.
+  # Trust exactly the user/tap/formula entries listed in the Brewfile.
+  sed -n 's/^brew "\([^"/]*\/[^"/]*\/[^"]*\)".*/\1/p' "$DOTFILES_DIR/$brewfile" |
+    while read -r formula; do
+      brew tap "${formula%/*}" >/dev/null
+      brew trust --formula "$formula" >/dev/null
+    done
+  brew bundle --quiet --file="$DOTFILES_DIR/$brewfile"
+done
 
 # One-time migration from the old setup (Homebrew rfig and
 # rex-agent-restore, zsh-autocomplete).
