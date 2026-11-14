@@ -66,6 +66,13 @@ fi
 
 # rfig: inline command suggestions, installed via Homebrew
 if command -v brew >/dev/null 2>&1; then
+    # zsh-autocomplete conflicts with rfig; remove it and its state if present
+    if brew list zsh-autocomplete >/dev/null 2>&1; then
+        echo "🧹 Removing zsh-autocomplete (replaced by rfig)..."
+        brew uninstall zsh-autocomplete
+        rm -rf "$HOME/.local/state/zsh-autocomplete"
+        rm -f "${ZDOTDIR:-$HOME}"/.zcompdump*
+    fi
     if ! brew list rfig >/dev/null 2>&1; then
         echo "📦 Installing rfig..."
         brew install tamia6/tap/rfig
