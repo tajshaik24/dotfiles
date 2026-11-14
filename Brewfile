@@ -18,9 +18,9 @@ brew "gh"                         # GitHub CLI
 brew "go"                         # GOPATH set in zshrc
 brew "nvm"                        # Node versions (Homebridge runs on nvm's Node 22)
 brew "uv"                         # Python packages and tools
-brew "python@3.12"                # required by ~/Developer/peeps (scripts/setup.sh, its .venv)
 brew "poppler"                    # PDF tools: pdftotext, pdftoppm
 brew "xcodegen"                   # Xcode projects from a spec
+brew "openjdk@17"                 # Android builds (muslim-smart-home sets JAVA_HOME to it)
 brew "supabase/tap/supabase"      # Supabase CLI
 brew "jq"                         # JSON CLI; rex-agent-restore needs it
 brew "mole"                       # clean up and optimize the Mac
@@ -28,6 +28,7 @@ brew "mole"                       # clean up and optimize the Mac
 # Apps
 cask "1password"
 cask "1password-cli"
+cask "android-commandlinetools"   # Android SDK: platform-tools, android-35, build-tools 35
 cask "claude"
 cask "cursor"
 cask "font-jetbrains-mono"
