@@ -4,7 +4,7 @@ Brings AI agent chats back when Rex restores your panes after a restart. It's a 
 
 ## How it works
 
-1. Each agent (Claude Code, Codex, Gemini CLI, Cursor Agent) runs `rex-agent-restore hook <agent>` when a chat starts. The hook records the chat ID for the Rex pane it runs in.
+1. Each agent (here Claude Code and Cursor; it also supports Codex, Gemini CLI and others) runs `rex-agent-restore hook <agent>` when a chat starts. The hook records the chat ID for the Rex pane it runs in.
 2. When the agent exits normally, the shell's prompt hook (`share/rex-agent-restore/rex-agent-restore.zsh`) deletes that record. Only chats cut off by a restart are kept.
 3. When Rex restores a pane, the new shell finds its pane's record and resumes the chat.
 
@@ -13,7 +13,7 @@ Brings AI agent chats back when Rex restores your panes after a restart. It's a 
 `install.sh` does all of this:
 
 - Links `~/.local/bin/rex-agent-restore` to `bin/rex-agent-restore`. Agent hooks call that stable path, so edits here take effect immediately.
-- Runs `rex-agent-restore install --no-shell`. This adds the hook to each installed agent's settings and the Rex actions to `~/.config/rex/init.lua`, linking `~/.config/rex/rex_agent_restore.lua` to `share/`.
+- Runs `rex-agent-restore install --no-shell --agents claude,cursor` (the `RAR_AGENTS` list in `install.sh`). This adds the hook to those agents' settings and the Rex actions to `~/.config/rex/init.lua`, linking `~/.config/rex/rex_agent_restore.lua` to `share/`.
 - `zshrc` sources the zsh part straight from `share/`. `--no-shell` stops `install` from adding its own source line to the tracked `zshrc`.
 
 Saved chat records live in `~/.local/state/rex-agent-restore/panes`. Check the setup with `rex-agent-restore doctor`.

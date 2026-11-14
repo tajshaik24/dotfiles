@@ -6,6 +6,9 @@ set -euo pipefail
 DOTFILES_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 BACKUP_DIR="$HOME/dotfiles_backup_$(date +%Y%m%d_%H%M%S)"
 TCOMP_DIR="$HOME/.config/tcomp"
+# Agents whose chats rex-agent-restore saves (it would otherwise guess from
+# config folders, including leftovers from agents no longer installed).
+RAR_AGENTS="claude,cursor"
 
 # Move a real (non-symlink) file aside before it is replaced by a link.
 backup() {
@@ -99,15 +102,11 @@ if [ ! -f "$TCOMP_DIR/commands.txt" ]; then
   "$HOME/.local/bin/tcomp" setup --shell zsh
 fi
 
-# rex-agent-restore: point agent hooks (Claude, Codex, ...) and Rex at the
-# repo copy. --no-shell because zshrc sources its shell part directly.
+# rex-agent-restore: point the agent hooks and Rex at the repo copy.
+# --no-shell because zshrc sources its shell part directly.
 echo "🔁 Setting up rex-agent-restore..."
 link rex-agent-restore/bin/rex-agent-restore "$HOME/.local/bin/rex-agent-restore"
-"$HOME/.local/bin/rex-agent-restore" install --no-shell >/dev/null
-rar_status="$("$HOME/.local/bin/rex-agent-restore" doctor 2>&1 || true)"
-case "$rar_status" in
-  *"not approved"*) echo "💡 Codex: run /hooks once and approve the rex-agent-restore hook." ;;
-esac
+"$HOME/.local/bin/rex-agent-restore" install --no-shell --agents "$RAR_AGENTS" >/dev/null
 
 # Optional machine name for the prompt, stored in the gitignored private_keys.
 if [ -t 0 ]; then
