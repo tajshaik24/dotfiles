@@ -72,7 +72,7 @@ As you type, a menu of candidates appears under the prompt: subcommands, flags w
 ## Secrets and per-machine settings
 
 - `~/.zsh_prompt/private_keys` (API keys, `PROMPT_HOSTNAME`) is sourced by `zshrc` and gitignored. Start from `private_keys.example`, and copy it between machines with a password manager.
-- `~/.zshrc.local` holds machine-specific PATH entries and aliases, and is gitignored.
+- `~/.zshrc.local` holds machine-specific PATH entries and aliases, and is gitignored. It loads before the repo's prompt, aliases and tcomp abbreviations, so the repo's definitions win if a name is defined in both.
 
 ## Notes
 

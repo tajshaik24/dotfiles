@@ -64,14 +64,15 @@ if [ -n "$conda_bin" ]; then
 fi
 unset conda_bin conda_base conda_hook
 
+# Machine-specific settings (gitignored). Loaded before the repo's prompt,
+# aliases and plugins so the repo's definitions win on any overlap.
+[ -f ~/.zshrc.local ] && source ~/.zshrc.local
+
 # ── Prompt, aliases, git helpers ──────────────────────────────────────
 for file in ~/.zsh_prompt/*(N.); do
   [[ $file == *.example ]] || source "$file"
 done
 unset file
-
-# Machine-specific settings (gitignored)
-[ -f ~/.zshrc.local ] && source ~/.zshrc.local
 
 # ── rex-agent-restore ─────────────────────────────────────────────────
 # Resumes agent chats in panes Rex restores (./rex-agent-restore).
