@@ -18,6 +18,7 @@ brew "gh"                         # GitHub CLI
 brew "go"                         # GOPATH set in zshrc
 brew "nvm"                        # Node versions (Homebridge runs on nvm's Node 22)
 brew "uv"                         # Python packages and tools
+brew "python@3.12"                # required by ~/Developer/peeps (scripts/setup.sh, its .venv)
 brew "poppler"                    # PDF tools: pdftotext, pdftoppm
 brew "xcodegen"                   # Xcode projects from a spec
 brew "supabase/tap/supabase"      # Supabase CLI
