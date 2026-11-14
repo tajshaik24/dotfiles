@@ -3,8 +3,6 @@
 # Safe to run repeatedly; brew only installs what's missing.
 # List anything installed that isn't here: brew bundle cleanup --file=Brewfile
 
-tap "supabase/tap"
-
 # Shell (zshrc, tcomp)
 brew "rust"                       # builds tcomp from ./tcomp
 brew "zsh-syntax-highlighting"
@@ -21,7 +19,6 @@ brew "uv"                         # Python packages and tools
 brew "poppler"                    # PDF tools: pdftotext, pdftoppm
 brew "xcodegen"                   # Xcode projects from a spec
 brew "openjdk@17"                 # Android builds (muslim-smart-home sets JAVA_HOME to it)
-brew "supabase/tap/supabase"      # Supabase CLI
 brew "jq"                         # JSON CLI; rex-agent-restore needs it
 brew "mole"                       # clean up and optimize the Mac
 
