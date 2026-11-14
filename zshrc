@@ -12,8 +12,8 @@ export HOMEBREW_PREFIX="/opt/homebrew"
 alias brew="arch -arm64 $HOMEBREW_PREFIX/bin/brew"
 
 # C++ compilation
-export LDFLAGS="-L/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk/usr/lib -L$HOMEBREW_PREFIX/opt/openblas/lib -L$HOMEBREW_PREFIX/opt/openssl@3/lib"
-export CPPFLAGS="-I/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk/usr/include -I$HOMEBREW_PREFIX/opt/openssl@3/include -I$HOMEBREW_PREFIX/opt/openblas/include"
+export LDFLAGS="-L/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk/usr/lib -L$HOMEBREW_PREFIX/opt/openssl@3/lib"
+export CPPFLAGS="-I/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk/usr/include -I$HOMEBREW_PREFIX/opt/openssl@3/include"
 
 # ── PATH (deduplicated; earlier entries win) ──────────────────────────
 export GOPATH="$HOME/go"
@@ -28,7 +28,6 @@ path=(
   "$HOMEBREW_PREFIX/bin"
   "$HOMEBREW_PREFIX/sbin"
   "$HOMEBREW_PREFIX/opt/openssl@3/bin"
-  "$HOMEBREW_PREFIX/opt/gnu-sed/libexec/gnubin"
   $path
   "$GOPATH/bin"
 )

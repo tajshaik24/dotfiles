@@ -13,7 +13,7 @@ exec zsh
 Requires [Homebrew](https://brew.sh). `install.sh` is safe to re-run. It:
 
 1. Links `~/.zshrc`, `~/.zsh_prompt`, `~/.tmux.conf` and `~/.vimrc` to this repo, moving any existing real files to `~/dotfiles_backup_<timestamp>/`.
-2. Installs the `Brewfile` (rust, zsh-syntax-highlighting, fzf, tmux).
+2. Installs everything in the `Brewfile`: shell dependencies, dev tools and apps.
 3. Builds tcomp into `~/.local/bin`, links its abbreviations, and indexes your commands once.
 4. Optionally asks for a machine name to show in the prompt.
 

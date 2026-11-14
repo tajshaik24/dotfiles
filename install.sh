@@ -47,6 +47,13 @@ if [ -f "$BACKUP_DIR/.zsh_prompt/private_keys" ] && [ ! -f "$DOTFILES_DIR/.zsh_p
 fi
 
 echo "📦 Installing Homebrew packages..."
+# Homebrew won't load formulae from third-party taps until each is trusted.
+# Trust exactly the user/tap/formula entries listed in the Brewfile.
+sed -n 's/^brew "\([^"/]*\/[^"/]*\/[^"]*\)".*/\1/p' "$DOTFILES_DIR/Brewfile" |
+  while read -r formula; do
+    brew tap "${formula%/*}" >/dev/null
+    brew trust --formula "$formula" >/dev/null
+  done
 brew bundle --quiet --file="$DOTFILES_DIR/Brewfile"
 
 # One-time migration from the old setup (Homebrew rfig, zsh-autocomplete).

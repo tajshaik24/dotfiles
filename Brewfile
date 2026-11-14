@@ -1,9 +1,42 @@
-# Brewfile — everything this shell config depends on:
+# Everything this Mac needs from Homebrew. install.sh runs:
 #   brew bundle --file=~/Developer/dotfiles/Brewfile
-# Safe to run repeatedly; brew skips anything already installed.
+# Safe to run repeatedly; brew only installs what's missing.
+# List anything installed that isn't here: brew bundle cleanup --file=Brewfile
 
-# Shell
-brew "rust"                       # builds tcomp (inline suggestions) from ./tcomp
+tap "pattont/rex-agent-restore"
+tap "supabase/tap"
+
+# Shell (zshrc, tcomp)
+brew "rust"                       # builds tcomp from ./tcomp
 brew "zsh-syntax-highlighting"
-brew "fzf"                        # used by the `gc` branch-picker alias
-brew "tmux"                       # tmux.conf; also runs tcomp/tests/zsh_features.py
+brew "fzf"                        # gcb abbreviation: pick a branch to check out
+brew "tmux"                       # tmux.conf; tcomp's end-to-end test
+brew "direnv"                     # per-directory env (hooked in ~/.zshrc.local)
+brew "openssl@3"                  # on PATH and in LDFLAGS/CPPFLAGS (zshrc)
+
+# Dev tools
+brew "gh"                         # GitHub CLI
+brew "go"                         # GOPATH set in zshrc
+brew "nvm"                        # Node versions (Homebridge runs on nvm's Node 22)
+brew "uv"                         # Python packages and tools
+brew "poppler"                    # PDF tools: pdftotext, pdftoppm
+brew "xcodegen"                   # Xcode projects from a spec
+brew "supabase/tap/supabase"      # Supabase CLI
+brew "pattont/rex-agent-restore/rex-agent-restore"  # resume agent chats after Rex restarts
+brew "jq"                         # needed by rex-agent-restore (listed so cleanup keeps it)
+brew "mole"                       # clean up and optimize the Mac
+
+# Apps
+cask "1password"
+cask "1password-cli"
+cask "chatgpt"
+cask "claude"
+cask "comet"
+cask "cursor"
+cask "dockdoor"
+cask "font-jetbrains-mono"
+cask "logi-options+"
+cask "miniconda"                  # conda, auto-detected by zshrc
+cask "notion-calendar"
+cask "orbstack"
+cask "zoom"
