@@ -154,5 +154,9 @@ try:
     assert '◷ echo newest' not in screen() or line().startswith('echo x')
     ok('Up with text typed keeps tcomp behaviour')
     print(f'zsh features: all {len(passed)} checks OK')
+    shutil.rmtree(SHOTS, ignore_errors=True)
 finally:
     subprocess.run(tm + ['kill-server'], capture_output=True)
+    shutil.rmtree(temp, ignore_errors=True)
+    if SHOTS.exists():
+        print(f'screen captures kept in {SHOTS}', file=sys.stderr)
