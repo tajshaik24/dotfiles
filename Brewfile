@@ -27,13 +27,9 @@ brew "mole"                       # clean up and optimize the Mac
 # Apps
 cask "1password"
 cask "1password-cli"
-cask "chatgpt"
 cask "claude"
-cask "comet"
 cask "cursor"
-cask "dockdoor"
 cask "font-jetbrains-mono"
-cask "logi-options+"
 cask "miniconda"                  # conda, auto-detected by zshrc
 cask "notion-calendar"
 cask "orbstack"
