@@ -79,6 +79,12 @@ unset file
 # Machine-specific settings (gitignored)
 [ -f ~/.zshrc.local ] && source ~/.zshrc.local
 
+# ── rex-agent-restore ─────────────────────────────────────────────────
+# Resumes agent chats in panes Rex restores (./rex-agent-restore).
+rar_zsh="${${:-$HOME/.zshrc}:A:h}/rex-agent-restore/share/rex-agent-restore/rex-agent-restore.zsh"
+[ -r "$rar_zsh" ] && source "$rar_zsh"
+unset rar_zsh
+
 # ── Line editor plugins (keep last) ───────────────────────────────────
 # tcomp: inline suggestions. Binary built by install.sh; script sourced from
 # the repo so edits apply in new shells.

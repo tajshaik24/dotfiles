@@ -1,6 +1,6 @@
 # dotfiles
 
-My macOS shell setup: zsh, a custom prompt, tmux, vim, and **tcomp**, my own inline command completion.
+My macOS shell setup: zsh, a custom prompt, tmux, vim, **tcomp** (my own inline command completion), and **rex-agent-restore** (resumes agent chats after Rex restarts).
 
 ## Install
 
@@ -15,9 +15,10 @@ Requires [Homebrew](https://brew.sh). `install.sh` is safe to re-run. It:
 1. Links `~/.zshrc`, `~/.zsh_prompt`, `~/.tmux.conf` and `~/.vimrc` to this repo, moving any existing real files to `~/dotfiles_backup_<timestamp>/`.
 2. Installs everything in the `Brewfile`: shell dependencies, dev tools and apps.
 3. Builds tcomp into `~/.local/bin`, links its abbreviations, and indexes your commands once.
-4. Optionally asks for a machine name to show in the prompt.
+4. Links rex-agent-restore into `~/.local/bin` and points your agents' hooks and Rex at it.
+5. Optionally asks for a machine name to show in the prompt.
 
-To update another machine: `git pull`, then `./install.sh` if `tcomp/` or the `Brewfile` changed. Otherwise just open a new shell.
+To update another machine: `git pull`, then `./install.sh` if `tcomp/src`, the `Brewfile` or rex-agent-restore's hooks changed. Otherwise just open a new shell.
 
 ## Layout
 
@@ -33,7 +34,9 @@ To update another machine: `git pull`, then `./install.sh` if `tcomp/` or the `B
 | `tmux.conf` | Prefix `Ctrl+Q`, mouse, vi copy mode, Solarized colors |
 | `vimrc` | Basic vim settings |
 | `tcomp/` | tcomp source, zsh script, abbreviations and tests ([details](tcomp/README.md)) |
-| `install.sh` / `uninstall.sh` | Set up / remove the links and the tcomp binary |
+| `rex-agent-restore/` | Resumes Claude/Codex/Gemini/Cursor chats when Rex restores a pane ([details](rex-agent-restore/README.md)) |
+| `Brewfile` | Every tap, formula and app on this Mac |
+| `install.sh` / `uninstall.sh` | Set up / remove everything above |
 
 ## tcomp: inline completion
 
@@ -73,4 +76,5 @@ As you type, a menu of candidates appears under the prompt: subcommands, flags w
 
 - **Conda:** the prompt shows the active env itself. Run `conda config --set changeps1 false` once per machine so it doesn't appear twice.
 - **Don't install zsh-autocomplete:** it rebinds the same widgets as tcomp. `install.sh` removes it if present.
-- **Uninstall:** `./uninstall.sh` removes the links and `~/.local/bin/tcomp`. Homebrew packages and `~/.config/tcomp` (history) are kept.
+- **Uninstall:** `./uninstall.sh` removes the links, `~/.local/bin/tcomp`, and rex-agent-restore's agent hooks. Homebrew packages, tcomp history and saved chat records are kept.
+- **Codex:** after installing, run `/hooks` in Codex once and approve the rex-agent-restore hook.

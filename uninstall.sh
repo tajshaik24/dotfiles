@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
-# Remove the links and tcomp binary created by install.sh. Leaves Homebrew
-# packages, ~/.config/tcomp (history), and the repo itself untouched.
+# Remove what install.sh set up: links, the tcomp binary, and
+# rex-agent-restore's agent hooks. Leaves Homebrew packages, ~/.config/tcomp
+# (history), saved chat records, and the repo itself untouched.
 set -euo pipefail
 
 DOTFILES_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -14,6 +15,12 @@ unlink_if_ours() {
 }
 
 echo "🗑️  Uninstalling dotfiles..."
+# Remove agent hooks and Rex actions before the program they call.
+if [ -x ~/.local/bin/rex-agent-restore ]; then
+  ~/.local/bin/rex-agent-restore uninstall >/dev/null
+  echo "  ✓ Removed rex-agent-restore hooks"
+fi
+unlink_if_ours ~/.local/bin/rex-agent-restore
 unlink_if_ours ~/.zshrc
 unlink_if_ours ~/.zsh_prompt
 unlink_if_ours ~/.tmux.conf

@@ -3,7 +3,6 @@
 # Safe to run repeatedly; brew only installs what's missing.
 # List anything installed that isn't here: brew bundle cleanup --file=Brewfile
 
-tap "pattont/rex-agent-restore"
 tap "supabase/tap"
 
 # Shell (zshrc, tcomp)
@@ -22,8 +21,7 @@ brew "uv"                         # Python packages and tools
 brew "poppler"                    # PDF tools: pdftotext, pdftoppm
 brew "xcodegen"                   # Xcode projects from a spec
 brew "supabase/tap/supabase"      # Supabase CLI
-brew "pattont/rex-agent-restore/rex-agent-restore"  # resume agent chats after Rex restarts
-brew "jq"                         # needed by rex-agent-restore (listed so cleanup keeps it)
+brew "jq"                         # JSON CLI; rex-agent-restore needs it
 brew "mole"                       # clean up and optimize the Mac
 
 # Apps

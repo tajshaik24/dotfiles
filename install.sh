@@ -56,7 +56,8 @@ sed -n 's/^brew "\([^"/]*\/[^"/]*\/[^"]*\)".*/\1/p' "$DOTFILES_DIR/Brewfile" |
   done
 brew bundle --quiet --file="$DOTFILES_DIR/Brewfile"
 
-# One-time migration from the old setup (Homebrew rfig, zsh-autocomplete).
+# One-time migration from the old setup (Homebrew rfig and
+# rex-agent-restore, zsh-autocomplete).
 # Runs after brew bundle so rust stays installed. No-op on new machines.
 if brew list zsh-autocomplete >/dev/null 2>&1; then
   echo "🧹 Removing zsh-autocomplete (conflicts with tcomp)..."
@@ -67,8 +68,19 @@ if brew list rfig >/dev/null 2>&1; then
   echo "🧹 Removing Homebrew rfig (replaced by tcomp)..."
   brew uninstall rfig
 fi
-if brew tap | grep -qx tamia6/tap; then
-  brew untap tamia6/tap
+if brew list rex-agent-restore >/dev/null 2>&1; then
+  echo "🧹 Removing Homebrew rex-agent-restore (now in this repo)..."
+  brew uninstall rex-agent-restore
+fi
+for tap in tamia6/tap pattont/rex-agent-restore; do
+  if brew tap | grep -qx "$tap"; then
+    brew untap "$tap"
+  fi
+done
+# Old Homebrew source line; zshrc now sources the repo copy.
+if [ -f "$HOME/.zshrc.local" ] && grep -q '/opt/homebrew/share/rex-agent-restore' "$HOME/.zshrc.local"; then
+  sed -i.bak '/^# >>> rex-agent-restore >>>$/,/^# <<< rex-agent-restore <<<$/d' "$HOME/.zshrc.local"
+  rm -f "$HOME/.zshrc.local.bak"
 fi
 rm -f "$HOME/.local/bin/rfig"
 if [ -d "$HOME/.config/rfig" ] && [ ! -e "$TCOMP_DIR" ]; then
@@ -86,6 +98,16 @@ if [ ! -f "$TCOMP_DIR/commands.txt" ]; then
   echo "⚙️  Indexing commands for tcomp (one time)..."
   "$HOME/.local/bin/tcomp" setup --shell zsh
 fi
+
+# rex-agent-restore: point agent hooks (Claude, Codex, ...) and Rex at the
+# repo copy. --no-shell because zshrc sources its shell part directly.
+echo "🔁 Setting up rex-agent-restore..."
+link rex-agent-restore/bin/rex-agent-restore "$HOME/.local/bin/rex-agent-restore"
+"$HOME/.local/bin/rex-agent-restore" install --no-shell >/dev/null
+rar_status="$("$HOME/.local/bin/rex-agent-restore" doctor 2>&1 || true)"
+case "$rar_status" in
+  *"not approved"*) echo "💡 Codex: run /hooks once and approve the rex-agent-restore hook." ;;
+esac
 
 # Optional machine name for the prompt, stored in the gitignored private_keys.
 if [ -t 0 ]; then
