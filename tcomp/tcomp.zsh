@@ -242,7 +242,7 @@ _tcomp_render() {
     _tcomp_hist_header $hist_width
   fi
   local index description row start kind icon color rest record label icon_offset label_offset width range
-  local -a popular_icons=( '①' '②' '③' )
+  local -i popular
   rest=${_tcomp_hits[_tcomp_selected]#*$'\t'}
   rest=${rest#*$'\t'}
   description=${rest%%$'\t'*}
@@ -259,9 +259,8 @@ _tcomp_render() {
       option) icon='◇'; color=blue ;;
       flag) icon='⚑'; color=yellow ;;
     esac
-    local popular_index=$index
-    [[ ${_tcomp_hits[1]##*$'\t'} == history ]] && (( --popular_index ))
-    (( popular_index > 0 && popular_index <= _tcomp_popular_count )) && icon=$popular_icons[popular_index]
+    # Your most-picked items here (up to 3, ranked first) get a ★ after the name.
+    (( popular = index <= _tcomp_popular_count ))
     POSTDISPLAY+=$'\n'
     start=$(( ${#BUFFER} + ${#POSTDISPLAY} ))
     if (( hist_view )); then
@@ -291,6 +290,11 @@ _tcomp_render() {
       printf -v row '  %s  %-*.*s' "$icon" $width $width "$label"
     else
       printf -v row '  %s %-*.*s' "$icon" $width $width "$label"
+    fi
+    if (( popular && ${#label} + 2 <= width )); then
+      local -i star=$(( label_offset + ${#label} + 2 ))
+      row[star]='★'
+      region_highlight+=( "$((start + label_offset + ${#label} + 1)) $((start + label_offset + ${#label} + 2)) fg=yellow memo=tcomp" )
     fi
     POSTDISPLAY+=$row
     if (( index == _tcomp_selected )); then

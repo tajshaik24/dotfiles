@@ -116,6 +116,9 @@ try:
     clear()
     keys('-l', 'git pus'); wait(lambda: 'push' in screen(), 'push'); settle()
     assert 'update remote' in screen(), screen()
+    push_row = next(l for l in screen().splitlines()[1:] if 'push' in l)
+    assert re.search(r'push ★', push_row) and not re.search('[①②③]', screen()), push_row   # picked with Tab in 1.
+    ok('A completion you have picked before is marked ★: ' + push_row.strip())
     ok('git pus → ' + last())
     clear()
     keys('-l', 'ls -la '); wait(lambda: 'src' in screen() and 'docs' in screen(), 'local dirs'); settle(); shot('ls-la-local')
