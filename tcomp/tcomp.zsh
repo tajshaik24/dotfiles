@@ -24,6 +24,7 @@ _tcomp_usage=()
 typeset -g _tcomp_option_source='' _tcomp_option_stamp=''
 typeset -g _tcomp_history_dir=''
 typeset -ga _tcomp_history_lines
+typeset -gA _tcomp_history_time   # command -> unix time it last ran here (history.tsv 3rd field)
 typeset -gi _tcomp_moved=0   # the highlight was moved with the arrow keys
 typeset -gi _tcomp_selected=1 _tcomp_pulse=0 _tcomp_injected=0 _tcomp_popular_count=0 _tcomp_stale=0
 typeset -gA _tcomp_abbr
@@ -71,11 +72,14 @@ _tcomp_record_line() {
 _tcomp_history_load_dir() {
   _tcomp_history_dir=$PWD
   _tcomp_history_lines=()
-  local dir line file="$HOME/.config/tcomp/history.tsv"
+  _tcomp_history_time=()
+  local dir line when file="$HOME/.config/tcomp/history.tsv"
   [[ -r $file ]] || return
-  while IFS=$'\x1f' read -r dir line; do
+  # <dir> US <command> [US <unix time>]; older lines have no time.
+  while IFS=$'\x1f' read -r dir line when; do
     [[ $dir == $_tcomp_history_dir && -n $line ]] || continue
     _tcomp_history_lines+=( "$line" )
+    [[ $when == <-> ]] && _tcomp_history_time[$line]=$when
   done < "$file"
   (( $#_tcomp_history_lines > 1000 )) && _tcomp_history_lines=( "${_tcomp_history_lines[-1000,-1][@]}" )
 }
@@ -85,9 +89,10 @@ _tcomp_history_record() {
   [[ -n $line && $line != *$'\n'* && $line != *$'\r'* && $line != *$'\x1f'* \
     && $PWD != *$'\n'* && $PWD != *$'\r'* && $PWD != *$'\x1f'* ]] || return
   [[ -o hist_ignore_space && $line == ' '* ]] && return
-  (umask 077; mkdir -p -- "${file:h}" && touch -- "$file" && chmod 600 "$file" && printf '%s\x1f%s\n' "$PWD" "$line" >> "$file") || return
+  (umask 077; mkdir -p -- "${file:h}" && touch -- "$file" && chmod 600 "$file" && printf '%s\x1f%s\x1f%s\n' "$PWD" "$line" "$EPOCHSECONDS" >> "$file") || return
   [[ $_tcomp_history_dir == $PWD ]] || _tcomp_history_load_dir
   _tcomp_history_lines+=( "$line" )
+  _tcomp_history_time[$line]=$EPOCHSECONDS
   (( $#_tcomp_history_lines > 1000 )) && _tcomp_history_lines=( "${_tcomp_history_lines[-1000,-1][@]}" )
 }
 
@@ -225,9 +230,16 @@ _tcomp_render() {
   (( _tcomp_search_mode )) && rows=8
   _tcomp_in_hist && rows=8
   local first=$(( _tcomp_selected > rows ? _tcomp_selected - rows + 1 : 1 ))
-  # Up-arrow history menu: plain commands with how long ago each ran, no icons or footer.
-  local -i hist_view=0 shown
+  # Up-arrow history menu: its own look (header, selection bar, ages, key hints).
+  local -i hist_view=0 shown hist_width label_width
   (( ! _tcomp_search_mode )) && _tcomp_in_hist && hist_view=1
+  if (( hist_view )); then
+    # The line is empty, so any other plugin's highlights would land on the menu.
+    region_highlight=()
+    (( hist_width = COLUMNS - 1 < 72 ? COLUMNS - 1 : 72 ))
+    (( label_width = hist_width - 7 > 1 ? hist_width - 7 : 1 ))
+    _tcomp_hist_header $hist_width
+  fi
   local index description row start kind icon color rest record label icon_offset label_offset width range
   local -a popular_icons=( '①' '②' '③' )
   rest=${_tcomp_hits[_tcomp_selected]#*$'\t'}
@@ -253,19 +265,7 @@ _tcomp_render() {
     POSTDISPLAY+=$'\n'
     start=$(( ${#BUFFER} + ${#POSTDISPLAY} ))
     if (( hist_view )); then
-      (( width = COLUMNS - 9 < 44 ? COLUMNS - 9 : 44 ))
-      (( width < 1 )) && width=1
-      (( shown = ${#label} > width ? ${#label} : width ))
-      _tcomp_short_ago ${_tcomp_ran_time[$label]:-0}
-      if (( index == _tcomp_selected )); then
-        printf -v row '→ %-*s  %3s' $shown "$label" "$REPLY"
-        region_highlight+=( "$start $((start + 1)) fg=cyan,bold memo=tcomp"
-                            "$((start + 2)) $((start + 2 + ${#label})) fg=cyan,bold memo=tcomp" )
-      else
-        printf -v row '  %-*s  %3s' $shown "$label" "$REPLY"
-      fi
-      region_highlight+=( "$((start + 2 + shown + 2)) $((start + 2 + shown + 5)) fg=8 memo=tcomp" )
-      POSTDISPLAY+=$row
+      _tcomp_hist_row $index $start $label_width "$label"
       continue
     fi
     icon_offset=2
@@ -312,7 +312,10 @@ _tcomp_render() {
       done
     fi
   done
-  (( hist_view )) && return
+  if (( hist_view )); then
+    _tcomp_hist_footer
+    return
+  fi
   POSTDISPLAY+=$'\n'
   width=$(( COLUMNS > 2 ? COLUMNS - 2 : 0 ))
   (( width > 44 )) && width=44
@@ -1000,6 +1003,68 @@ _tcomp_abbr_hint() {
 }
 
 # ---------------------------------------------------------------- history menu
+
+# "  ◷ history · ~/dir                     3/20"
+_tcomp_hist_header() {
+  local -i width=$1 start
+  local title='◷ history' dir=${(D)PWD} pos="$_tcomp_selected/$#_tcomp_hits" row
+  local -i room=$(( width - 2 - ${#title} - 3 - ${#pos} - 1 ))
+  (( ${#dir} > room && room > 1 )) && dir="…${dir[-(room - 1),-1]}"
+  (( room < 1 )) && dir=''
+  printf -v row '  %s · %-*s %s' "$title" $(( width - 2 - ${#title} - 3 - ${#pos} - 1 )) "$dir" "$pos"
+  start=$(( ${#BUFFER} + ${#POSTDISPLAY} + 1 ))
+  POSTDISPLAY+=$'\n'$row
+  region_highlight+=(
+    "$((start + 2)) $((start + 2 + ${#title})) fg=blue,bold memo=tcomp"
+    "$((start + 2 + ${#title})) $((start + ${#row})) fg=8 memo=tcomp"
+  )
+}
+
+# One history row: selection bar, command name in colour, age on the right.
+# Long commands are cut with … unless selected, which shows in full.
+_tcomp_hist_row() {
+  local -i index=$1 start=$2 width=$3 shown end age_start
+  local label=$4 text row marker='  ' age_color=8
+  local -i t=${_tcomp_history_time[$label]:-0} r=${_tcomp_ran_time[$label]:-0}
+  (( r > t )) && t=r
+  _tcomp_short_ago $t
+  (( t && EPOCHSECONDS - t < 3600 )) && age_color=green
+  (( t && EPOCHSECONDS - t >= 3600 && EPOCHSECONDS - t < 86400 )) && age_color=yellow
+  text=$label
+  if (( index == _tcomp_selected )); then
+    marker='→ '
+    (( shown = ${#label} > width ? ${#label} : width ))
+  else
+    (( ${#text} > width )) && text="${text[1,width-1]}…"
+    shown=$width
+  fi
+  printf -v row '%s%-*s  %3s ' "$marker" $shown "$text" "$REPLY"
+  POSTDISPLAY+=$row
+  end=$(( start + ${#row} ))
+  age_start=$(( start + 2 + shown + 2 ))
+  local word=${text%% *}
+  if (( index == _tcomp_selected )); then
+    region_highlight+=(
+      "$start $end bg=236 memo=tcomp"
+      "$start $((start + 1)) fg=cyan,bold,bg=236 memo=tcomp"
+      "$((start + 2)) $((start + 2 + ${#text})) fg=white,bold,bg=236 memo=tcomp"
+      "$((start + 2)) $((start + 2 + ${#word})) fg=cyan,bold,bg=236 memo=tcomp"
+      "$age_start $((age_start + 3)) fg=$age_color,bg=236 memo=tcomp"
+    )
+  else
+    region_highlight+=(
+      "$((start + 2)) $((start + 2 + ${#word})) fg=green memo=tcomp"
+      "$age_start $((age_start + 3)) fg=$age_color memo=tcomp"
+    )
+  fi
+}
+
+_tcomp_hist_footer() {
+  local hint='  ↵ run   → edit   ↑↓ move   ^R search   ^G close' start
+  start=$(( ${#BUFFER} + ${#POSTDISPLAY} + 1 ))
+  POSTDISPLAY+=$'\n'$hint
+  region_highlight+=( "$start $((start + ${#hint})) fg=8 memo=tcomp" )
+}
 
 _tcomp_in_hist() {
   [[ -z $BUFFER ]] && (( _tcomp_hist_mode && $#_tcomp_hits ))

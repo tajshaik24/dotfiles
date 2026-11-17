@@ -133,15 +133,18 @@ try:
     clear()
 
     # 5. Up on an empty line opens history menu (newest on top; arrows move as drawn)
-    def menu(): return [l for l in screen().splitlines()[1:] if l.strip()]
+    def menu(): return [l for l in screen().splitlines()[1:] if l.strip() and '◷ history' not in l and '↵ run' not in l]
     def sel(): return next((l for l in screen().splitlines() if '→' in l), '')
     keys('Up'); wait(lambda: 'echo newest' in screen() and line().strip() == '', 'history menu'); settle(); shot('up-history-menu')
     rows = menu()
     assert rows[0].startswith('→ echo newest'), rows
-    assert len(rows) == 6 and '◷' not in screen() and 'History' not in screen(), rows
+    assert len(rows) == 6, rows
+    head = next(l for l in screen().splitlines() if '◷ history' in l)
+    assert '~/repo' in head and '1/6' in head, head
+    assert '↵ run' in screen(), 'key hints footer'
     assert sum('echo first' in r for r in rows) == 1, 'dedupe failed'
     assert not any('elsewhere' in r for r in rows), 'other folder leaked'
-    ok('Up opens folder history, newest on top, deduped, no icons or footer')
+    ok('Up opens folder history, newest on top, deduped, with header and key hints')
     keys('Down'); settle(); keys('Down'); settle(); shot('down-down')
     assert 'echo first' in sel(), sel()
     ok('Down moves the highlight down, to older commands: ' + sel().strip())
@@ -173,8 +176,17 @@ try:
     ok('Up with text typed keeps tcomp behaviour')
     clear()
 
+    hist = (cfg / 'history.tsv').read_text()
+    keys('-l', 'echo timed'); keys('Enter'); settle()
+    last = (cfg / 'history.tsv').read_text()[len(hist):].strip().split('\x1f')
+    assert last[1] == 'echo timed' and abs(int(last[2]) - time.time()) < 30, last
+    keys('Up'); wait(lambda: 'echo timed' in screen() and line().strip() == '', 'menu again'); settle()
+    assert menu()[0].rstrip().endswith('now'), menu()[0]
+    ok('Running a command records when, and the menu shows its age: ' + menu()[0].strip())
+    keys('C-g'); clear()
+
     # 5b. Enter takes the highlighted completion only after arrowing to it
-    def last_hist(): return (cfg / 'history.tsv').read_text().splitlines()[-1].split('\x1f', 1)[1]
+    def last_hist(): return (cfg / 'history.tsv').read_text().splitlines()[-1].split('\x1f')[1]
     keys('-l', 'ls -d '); wait(lambda: 'src' in screen() and '→' in screen(), 'ls -d menu'); settle()
     keys('Enter'); wait(lambda: last_hist().rstrip() == 'ls -d', 'trailing space runs as typed')
     ok('Enter after a space, without arrowing, runs the line as typed')
@@ -263,7 +275,7 @@ try:
     clear()
 
     # 9. History rows show the whole command
-    keys('Up'); wait(lambda: 'echo newest' in screen() and line().strip() == '', 'history menu'); settle()
+    keys('Up'); wait(lambda: '◷ history' in screen() and line().strip() == '', 'history menu'); settle()
     for _ in range(20):                       # it's an old entry: scroll down to it
         if LONG in selected(): break
         keys('Down'); time.sleep(.08)

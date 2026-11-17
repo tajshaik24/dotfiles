@@ -87,6 +87,12 @@ pub fn quote(text: &str, typed: &str) -> String {
     }
     out
 }
+fn now_secs() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0)
+}
 fn valid(text: &str) -> bool {
     !text.chars().any(char::is_control)
 }
@@ -210,7 +216,9 @@ impl Memory {
         let history = fs::read_to_string(root.join("history.tsv"))
             .unwrap_or_default()
             .lines()
+            // <dir> US <command> [US <unix time>]; the time is for zsh's history menu.
             .filter_map(|l| l.split_once('\x1f'))
+            .map(|(dir, rest)| (dir, rest.split('\x1f').next().unwrap_or_default()))
             .filter(|(dir, l)| *dir == directory && valid(l))
             .map(|(_, l)| l.to_owned())
             .collect();
@@ -290,7 +298,10 @@ impl Memory {
             return;
         }
         if self
-            .append("history.tsv", &format!("{}\x1f{line}", self.directory))
+            .append(
+                "history.tsv",
+                &format!("{}\x1f{line}\x1f{}", self.directory, now_secs()),
+            )
             .is_ok()
         {
             self.history.push(line.to_owned());
