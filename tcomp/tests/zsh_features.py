@@ -1,6 +1,7 @@
 """Run: python3 tcomp/tests/zsh_features.py (needs tmux and tcomp on PATH).
 
-Tab acceptance, abbreviations, the empty-line history menu and flag descriptions in zsh."""
+Tab acceptance, abbreviations, the empty-line history menu, flag descriptions,
+background completion, the per-word cache and arrow-key responsiveness in zsh."""
 import os, subprocess, tempfile, time, shutil, sys
 from pathlib import Path
 
@@ -21,13 +22,18 @@ sh('git', 'remote', 'add', 'origin', str(home / 'remote.git'))
 
 cfg = home / '.config/tcomp'; cfg.mkdir(parents=True)
 shutil.copy(TCOMP / 'abbr.tsv', cfg / 'abbr.tsv')
+LONG = 'echo this-history-entry-is-much-longer-than-forty-one-columns-and-must-show-in-full'
 (cfg / 'history.tsv').write_text(''.join(f'{repo}\x1f{c}\n' for c in [
-    'git status', 'echo first', 'ls -la src', 'echo first', 'git log --oneline', 'echo newest']) +
+    LONG, 'git status', 'echo first', 'ls -la src', 'echo first', 'git log --oneline', 'echo newest']) +
     f'{other}\x1fecho elsewhere\n')
 bins = home / 'bin'; bins.mkdir(); (bins / 'tcomp').symlink_to(shutil.which('tcomp') or sys.exit('tcomp not on PATH: brew bundle first'))
 (home / '.zshrc').write_text(f"""PROMPT='T> '
 autoload -Uz compinit; compinit -D
 source {TCOMP}/tcomp.zsh
+# A completer that takes 0.6s, like git listing branches, but deterministic.
+slowcmd() {{ :; }}
+_slowcmd() {{ sleep 0.6; compadd -- alpha-one alpha-two beta-three; }}
+compdef _slowcmd slowcmd
 """)
 env = dict(os.environ, HOME=temp, ZDOTDIR=temp, XDG_CONFIG_HOME=str(home / '.config'),
            PATH=f'{bins}:' + os.environ['PATH'], TERM='xterm-256color', LANG='C.UTF-8', LC_ALL='C.UTF-8')
@@ -167,6 +173,88 @@ try:
     keys('-l', 'gc -m'); keys('Enter'); wait(lambda: line().startswith('git commit -m ""'), 'gc -m expanded, not run'); settle()
     keys('-l', 'msg'); wait(lambda: line().startswith('git commit -m "msg"'), 'cursor inside quotes')
     ok('Enter on gc -m stops at %| for the message instead of running')
+    clear()
+
+    # 7. Responsiveness: slow completers run in the background
+    def selected(): return next((l for l in screen().splitlines() if '→' in l), '')
+    keys('-l', 'slowcmd '); t0 = time.monotonic(); keys('-l', 'al')
+    wait(lambda: line().rstrip() == 'slowcmd al', 'typed text shows')
+    took = time.monotonic() - t0
+    assert took < 0.4, f'typing waited {took:.2f}s on a 0.6s completer'
+    wait(lambda: 'alpha-one' in screen() and 'alpha-two' in screen(), 'background menu arrives', t=4)
+    assert 'beta-three' not in screen(), screen()
+    ok(f'Typing never waits on a slow completer (text in {took*1000:.0f}ms; menu filled in later)')
+    t0 = time.monotonic(); keys('-l', 'pha-o')
+    wait(lambda: 'alpha-one' in screen() and 'alpha-two' not in screen(), 'narrowed from cache')
+    took = time.monotonic() - t0
+    assert took < 0.4, f'narrowing re-ran the completer ({took:.2f}s)'
+    ok(f'More letters of the same word filter the cached list ({took*1000:.0f}ms)')
+    clear()
+    keys('-l', 'slowcmd beta'); keys('Tab')
+    wait(lambda: line().startswith('slowcmd beta-three'), 'Tab while loading', t=4)
+    ok('Tab while loading waits for the result and accepts it')
+    clear()
+    keys('-l', 'slowcmd alpha-t'); keys('Right')
+    wait(lambda: line().startswith('slowcmd alpha-two'), 'Right while loading', t=4)
+    ok('Right while loading accepts the right option')
+    clear()
+    keys('-l', 'slowcmd al'); keys('Down')
+    def rows(): return [l for l in screen().splitlines()[1:] if 'alpha' in l]
+    wait(lambda: len(rows()) == 2 and '→' in rows()[1], 'Down moves to the 2nd row of the loaded menu', t=4)
+    ok('Down while loading moves within the loaded menu: ' + selected().strip())
+    clear()
+    keys('-l', 'slowcmd al'); keys('C-u'); keys('-l', 'echo zz'); time.sleep(1.0)
+    assert 'alpha' not in screen() and line().rstrip() == 'echo zz', screen()
+    ok('A result for an older line is dropped')
+    clear()
+    keys('-l', 'slowcmd al'); keys('C-c'); time.sleep(1.0)
+    assert 'alpha' not in screen(), screen()
+    ok('Ctrl+C while loading leaves no menu behind')
+    user = os.environ.get('USER') or os.getlogin()
+    keys('-l', 'ls ~' + user[:2]); wait(lambda: user in screen(), f'~{user[:2]} lists {user}', t=4)
+    ok(f'ls ~{user[:2]} lists users ({user}), which a forked worker cannot look up')
+    clear()
+    pane = call('display-message', '-p', '-t', 't', '#{pane_pid}').strip()
+    kids = subprocess.run(['pgrep', '-P', pane], capture_output=True, text=True).stdout.split()
+    assert not kids, f'leftover worker processes: {kids}'
+    assert 'TCOMP' not in raw(), raw()
+    ok('No leftover workers or protocol text on screen')
+    clear()
+
+    # 8. Cache safety: cases where more letters change what's offered
+    keys('-l', 'ls -'); wait(lambda: '⚑' in screen(), 'ls flags'); settle()
+    keys('-l', 'l'); wait(lambda: '-la' in screen() or '-lh' in screen(), 'combined flags for ls -l')
+    ok('ls - then l offers combined flags (options are never filtered from cache)')
+    clear()
+    keys('-l', 'gi'); wait(lambda: 'git' in screen(), 'commands'); settle()
+    keys('-l', 't'); wait(lambda: '↳ add' in screen() or '↳ am' in screen(), "bare git shows git's subcommands")
+    ok('gi then t: bare git shows its subcommands, not commands named git*')
+    clear()
+
+    # 9. History rows show the whole command
+    keys('-l', 'echo this-h'); wait(lambda: LONG in screen(), 'full inline history row'); settle()
+    ok('Inline history suggestion shows the full command')
+    clear()
+    keys('Up'); wait(lambda: '◷' in screen(), 'history menu'); settle()
+    for _ in range(20):                       # it's an old entry: scroll back to it
+        if LONG in selected(): break
+        keys('Up'); time.sleep(.08)
+    assert LONG in selected(), screen()
+    ok('History menu shows long commands in full')
+    keys('C-g'); clear()
+
+    # 10. Holding Down doesn't queue up behind the selection animation
+    keys('-l', 'ls -'); wait(lambda: '⚑' in screen(), 'ls flags'); settle()
+    before = selected(); t0 = time.monotonic(); keys(*['Down'] * 10)
+    end, prev, changed = time.monotonic() + 2, before, t0
+    while time.monotonic() < end:
+        cur = selected()
+        if cur != prev: prev, changed = cur, time.monotonic()
+        if time.monotonic() - changed > 0.25: break
+        time.sleep(.02)
+    took = changed - t0
+    assert prev != before and took < 0.35, f'10 Downs took {took:.2f}s'
+    ok(f'10 quick Downs settle in {took*1000:.0f}ms')
     clear()
     print(f'zsh features: all {len(passed)} checks OK')
     shutil.rmtree(SHOTS, ignore_errors=True)

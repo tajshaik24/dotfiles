@@ -5,6 +5,13 @@ if (( ! $+functions[_main_complete] )); then
 fi
 zmodload zsh/stat
 zmodload zsh/zutil
+zmodload zsh/zselect
+zmodload zsh/zpty 2>/dev/null
+zmodload zsh/system   # $sysparams[pid] for background workers
+# Inside widgets fd 0 always polls as readable, so keep our own handle on the
+# terminal to notice the next keypress without consuming it.
+typeset -g _tcomp_tty=''
+[[ -t 0 ]] && exec {_tcomp_tty}</dev/tty 2>/dev/null
 
 typeset -gaU _tcomp_hits
 typeset -gA _tcomp_option_kinds
@@ -15,7 +22,7 @@ typeset -g _tcomp_option_source='' _tcomp_option_stamp=''
 typeset -g _tcomp_history_match=''
 typeset -g _tcomp_history_dir=''
 typeset -ga _tcomp_history_lines
-typeset -gi _tcomp_selected=1 _tcomp_pulse=0 _tcomp_injected=0 _tcomp_popular_count=0
+typeset -gi _tcomp_selected=1 _tcomp_pulse=0 _tcomp_injected=0 _tcomp_popular_count=0 _tcomp_stale=0
 typeset -gA _tcomp_abbr
 typeset -g _tcomp_abbr_file="$HOME/.config/tcomp/abbr.tsv" _tcomp_abbr_stamp=''
 typeset -gi _tcomp_hist_mode=0 _tcomp_hist_max=20
@@ -258,6 +265,8 @@ _tcomp_render() {
     fi
     (( width = COLUMNS - label_offset - 1 < width ? COLUMNS - label_offset - 1 : width ))
     (( width < 0 )) && width=0
+    # History rows show the whole command (wrapping if needed), never a cut-off prefix.
+    [[ $kind == history ]] && (( ${#label} > width )) && width=${#label}
     if (( index == _tcomp_selected && _tcomp_pulse )); then
       printf -v row ' ➜ %s   %-*.*s' "$icon" $width $width "$label"
     elif (( index == _tcomp_selected )); then
@@ -291,6 +300,9 @@ _tcomp_render() {
 }
 
 _tcomp_complete() {
+  # Kept on screen while a background completion runs (minus the history row,
+  # which is recomputed), so the menu doesn't blank out for ~100ms.
+  local -a previous_hits=( "${(@)_tcomp_hits:#*$'\t'history}" )
   POSTDISPLAY=''
   region_highlight=(${region_highlight:#*memo=tcomp})
   _tcomp_hits=()
@@ -299,7 +311,172 @@ _tcomp_complete() {
   _tcomp_injected=0
   [[ -n $BUFFER && $BUFFER != *$'\n'* ]] || return
 
-  local original_buffer=$BUFFER original_cursor=$CURSOR command_name=${BUFFER%% *} record
+  _tcomp_async_cancel
+  local original_buffer=$BUFFER original_cursor=$CURSOR record label
+  if ! _tcomp_cache_filter; then
+    # Slow completers (git runs ~13 git commands) go to a background worker so
+    # typing never waits; the menu appears when _tcomp_async_ready gets results.
+    if _tcomp_should_async && _tcomp_async_start; then
+      _tcomp_hits=( "${previous_hits[@]}" )
+      return
+    fi
+    _tcomp_gather
+    _tcomp_cache_save
+  fi
+  (( $#_tcomp_hits )) || return
+  _tcomp_rank_hits
+}
+
+# ------------------------------------------------------- per-word candidate cache
+# Completing a word asks zsh (and often git, brew, ...) for every candidate, which
+# can take 100ms+. Typing more letters of the same word can only narrow that
+# list, so filter the list we already have instead of asking again.
+typeset -g _tcomp_cache_buffer=''
+typeset -gi _tcomp_cache_start=0
+typeset -ga _tcomp_cache_hits
+
+_tcomp_cache_save() {
+  _tcomp_cache_buffer=''
+  (( $#_tcomp_hits && ! _tcomp_injected && original_cursor == ${#original_buffer} )) || return
+  local typed=${original_buffer[$((_tcomp_start + 1)),-1]} record
+  # An empty word can list less than its first letter does (`git push o` adds
+  # more than `git push ` had), so only cache once a letter is typed.
+  [[ -n $typed ]] || return
+  # Only cache lists where every candidate literally starts with the typed text;
+  # path components and fuzzy matcher results don't, and must be recomputed.
+  for record in "${_tcomp_hits[@]}"; do
+    [[ ${record%%$'\t'*} == "$typed"* ]] || return
+  done
+  _tcomp_cache_buffer=$original_buffer
+  _tcomp_cache_start=$_tcomp_start
+  _tcomp_cache_hits=( "${_tcomp_hits[@]}" )
+}
+
+# Succeeds (filling _tcomp_hits) when BUFFER is the cached line plus more
+# plain word characters typed at the end.
+_tcomp_cache_filter() {
+  [[ -n $_tcomp_cache_buffer && $CURSOR == ${#BUFFER} ]] || return 1
+  # A bare command name with completions (`git`, `cd`) shows its subcommands or
+  # arguments, not commands named git*, so that needs a real completion.
+  if [[ $BUFFER != *' '* ]] && { (( $+commands[$BUFFER] )) || [[ -n ${_comps[$BUFFER]-} ]] }; then
+    return 1
+  fi
+  [[ ${BUFFER[1,${#_tcomp_cache_buffer}]} == "$_tcomp_cache_buffer" ]] || return 1
+  [[ ${BUFFER[$(( ${#_tcomp_cache_buffer} + 1 )),-1]} != *[^A-Za-z0-9._+@-]* ]] || return 1
+  local typed=${BUFFER[$((_tcomp_cache_start + 1)),-1]} record
+  # Options aren't a narrowing: `ls ` lists files, `ls -` flags, `--` long options.
+  [[ $typed != [-+]* ]] || return 1
+  for record in "${_tcomp_cache_hits[@]}"; do
+    [[ ${record%%$'\t'*} == "$typed"* ]] && _tcomp_hits+=( "$record" )
+  done
+  _tcomp_start=$_tcomp_cache_start
+  return 0
+}
+
+# ------------------------------------------------------- background completion
+# A worker is a fork of this shell (zpty), so it has the same directory,
+# environment and completion setup. It runs _tcomp_gather on the request line,
+# prints the results between markers and exits. A newer request cancels it;
+# the parent reads results when its pty becomes readable (zle -F), so the
+# line editor never blocks on it.
+typeset -g _tcomp_worker_fd='' _tcomp_worker_buffer='' _tcomp_worker_out=''
+typeset -gi _tcomp_worker_cursor=0
+typeset -g _tcomp_mark_start=$'\0TCOMP<\0' _tcomp_mark_end=$'\0TCOMP>\0'
+
+# Typing and Tab-accepting opt in (local _tcomp_async_ok=1); other callers need
+# the menu immediately. Starting a worker blocks ~3-6ms, about what a fast
+# completion costs anyway, so there's no need to guess which ones are slow.
+_tcomp_should_async() {
+  (( ${_tcomp_async_ok:-0} && $+modules[zsh/zpty] )) || return 1
+  # `~name` needs the user list, which zsh loads lazily from macOS's directory
+  # service, and that fails in a forked process. Doing it here loads it once
+  # (~12ms) in this shell, where later workers inherit it. `~/` is just $HOME.
+  local word=${${BUFFER[1,CURSOR]}##*[[:space:]]}
+  [[ $word != '~' && $word != \~[^/]* ]]
+}
+
+_tcomp_async_start() {
+  _tcomp_worker_out=''
+  _tcomp_worker_buffer=$BUFFER
+  _tcomp_worker_cursor=$CURSOR
+  zpty -b _tcomp_worker "_tcomp_worker_main ${(q)BUFFER} $CURSOR" 2>/dev/null || return 1
+  _tcomp_worker_fd=$REPLY
+  zle -F -w $_tcomp_worker_fd _tcomp_async_ready
+}
+
+_tcomp_async_cancel() {
+  [[ -n $_tcomp_worker_fd ]] || return 0
+  zle -F $_tcomp_worker_fd 2>/dev/null
+  zpty -d _tcomp_worker 2>/dev/null
+  _tcomp_worker_fd=''
+}
+
+# Collect whatever the worker has written; true once the end marker is in.
+_tcomp_async_read() {
+  local chunk
+  while zpty -rt _tcomp_worker chunk 2>/dev/null; do
+    _tcomp_worker_out+=$chunk
+  done
+  [[ $_tcomp_worker_out == *$_tcomp_mark_end* ]]
+}
+
+# Block (up to ~3s: 150 polls of 20ms) for the running worker; for keys that
+# act on the menu. A dead worker polls readable at once, so it gives up fast.
+_tcomp_async_wait() {
+  local -i polls=150
+  until _tcomp_async_read; do
+    (( polls-- > 0 )) || return 1
+    zselect -t 2 -r $_tcomp_worker_fd 2>/dev/null
+  done
+}
+
+# Install the finished worker's results as the menu for the current line.
+_tcomp_async_apply() {
+  local payload=${${_tcomp_worker_out#*$_tcomp_mark_start}%%$_tcomp_mark_end*}
+  _tcomp_async_cancel
+  local -a fields=( "${(@0)payload}" )
+  local original_buffer=$BUFFER original_cursor=$CURSOR
+  _tcomp_start=${fields[1]:-$CURSOR}
+  _tcomp_injected=${fields[2]:-0}
+  _tcomp_hits=( "${(@)fields[3,-1]:#}" )
+  _tcomp_popular_count=0
+  _tcomp_stale=0
+  _tcomp_cache_save
+  (( $#_tcomp_hits )) && _tcomp_rank_hits
+  _tcomp_preview_finish
+}
+
+_tcomp_async_ready() {
+  local fd=$1 condition=${2-}
+  [[ $fd == $_tcomp_worker_fd ]] || { zle -F $fd 2>/dev/null; return }
+  if ! _tcomp_async_read; then
+    [[ -n $condition ]] && _tcomp_async_cancel   # worker died without answering
+    return
+  fi
+  # Discard answers for a line that has since changed.
+  if [[ $BUFFER != $_tcomp_worker_buffer || $CURSOR != $_tcomp_worker_cursor ]]; then
+    _tcomp_async_cancel
+    return
+  fi
+  _tcomp_async_apply
+  zle -R
+}
+zle -N _tcomp_async_ready
+
+# --- worker side (runs inside the zpty fork) ---
+# The fork happens inside a widget, so the worker is still "in" the line
+# editor with the same BUFFER and can run the completion widget directly.
+_tcomp_worker_main() {
+  unset HISTFILE
+  BUFFER=$1 CURSOR=$2
+  _tcomp_gather 2>/dev/null
+  print -rn -- "$_tcomp_mark_start$_tcomp_start"$'\0'"$_tcomp_injected"$'\0'"${(pj:\0:)_tcomp_hits}$_tcomp_mark_end"
+  # SIGKILL skips exit-time cleanup, which could otherwise reset the real terminal.
+  kill -KILL $sysparams[pid]
+}
+
+_tcomp_gather() {
+  local original_buffer=$BUFFER original_cursor=$CURSOR command_name=${BUFFER%% *} record label
   local option_file="$HOME/.config/tcomp/options/$command_name.tsv" stamp=''
   local -A file_stat
   if [[ $command_name != */* ]] && zstat -H file_stat "$option_file" 2>/dev/null; then
@@ -383,9 +560,6 @@ _tcomp_complete() {
     CURSOR=$original_cursor
   fi
 
-  (( $#_tcomp_hits )) || return
-  local -a subcommands flags
-  local label typed_prefix=${original_buffer[$((_tcomp_start + 1)),$original_cursor]}
   if (( $#_tcomp_branch_candidates )); then
     local -a branch_hits
     for record in "${_tcomp_hits[@]}"; do
@@ -394,6 +568,12 @@ _tcomp_complete() {
     done
     _tcomp_hits=( "${branch_hits[@]}" )
   fi
+}
+
+# Orders _tcomp_hits by usage (uses the caller's original_buffer/original_cursor).
+_tcomp_rank_hits() {
+  local -a subcommands flags
+  local record label typed_prefix=${original_buffer[$((_tcomp_start + 1)),$original_cursor]}
   for record in "${_tcomp_hits[@]}"; do
     label=${record%%$'\t'*}
     if [[ $typed_prefix == --* && $typed_prefix != *=* ]]; then
@@ -423,7 +603,13 @@ _tcomp_complete() {
 }
 
 _tcomp_preview() {
+  _tcomp_stale=0
   _tcomp_complete
+  _tcomp_preview_finish
+}
+
+# Add the history suggestion and draw; also run when background results land.
+_tcomp_preview_finish() {
   _tcomp_history_suggest
   if [[ -n $_tcomp_history_match ]]; then
     _tcomp_hits=( "$_tcomp_history_match"$'\t'"$_tcomp_history_match"$'\tHistory\thistory' "${_tcomp_hits[@]}" )
@@ -437,8 +623,41 @@ _tcomp_after_edit() {
   zle ".$WIDGET" "$@"
   _tcomp_selected=1
   _tcomp_pulse=0
+  # More keys already queued (fast typing or a paste): skip this refresh, since
+  # each one can take 100ms+ and the keys behind it would lag.
+  if (( PENDING )); then
+    _tcomp_async_cancel
+    _tcomp_hits=(); POSTDISPLAY=''
+    region_highlight=(${region_highlight:#*memo=tcomp})
+    _tcomp_stale=1
+    return
+  fi
+  local _tcomp_async_ok=1
   _tcomp_preview
   zle -R
+}
+
+# True if a key is already queued, or one arrives within $1 centiseconds.
+_tcomp_key_waiting() {
+  (( PENDING )) && return 0
+  (( $1 > 0 )) && [[ -n $_tcomp_tty ]] || return 1
+  zselect -t $1 -r $_tcomp_tty 2>/dev/null
+}
+
+# Before acting on the menu, make it current: wait for a background result
+# for this exact line, or rebuild it if typing skipped the last refresh.
+_tcomp_refresh_stale() {
+  if [[ -n $_tcomp_worker_fd ]]; then
+    if [[ $BUFFER == $_tcomp_worker_buffer && $CURSOR == $_tcomp_worker_cursor ]] && _tcomp_async_wait; then
+      _tcomp_async_apply
+      return 0
+    fi
+    _tcomp_async_cancel
+    _tcomp_stale=1
+  fi
+  (( _tcomp_stale )) || return 0
+  _tcomp_selected=1
+  _tcomp_preview
 }
 for _tcomp_widget in self-insert backward-delete-char delete-char backward-kill-word kill-word kill-whole-line bracketed-paste backward-char beginning-of-line; do
   zle -N "$_tcomp_widget" _tcomp_after_edit
@@ -448,11 +667,13 @@ unset _tcomp_widget
 _tcomp_redraw_move() {
   local previous=$1
   if (( $#_tcomp_hits )); then
-    if (( previous != _tcomp_selected )); then
+    # Pulse only when no key is waiting, and cut it short when one arrives,
+    # so holding Up/Down keeps pace with key repeat instead of queueing.
+    if (( previous != _tcomp_selected && ! PENDING )); then
       _tcomp_pulse=1
       _tcomp_render
       zle -R
-      sleep 0.06
+      _tcomp_key_waiting 6
       _tcomp_pulse=0
     fi
     _tcomp_render
@@ -463,6 +684,7 @@ _tcomp_redraw_move() {
 }
 
 _tcomp_up() {
+  _tcomp_refresh_stale
   local previous=$_tcomp_selected
   if _tcomp_in_hist; then
     # History menu lists newest first, so Up walks further back in time.
@@ -481,6 +703,7 @@ _tcomp_up() {
 }
 
 _tcomp_down() {
+  _tcomp_refresh_stale
   local previous=$_tcomp_selected
   if _tcomp_in_hist; then
     if (( _tcomp_selected == 1 )); then
@@ -500,6 +723,8 @@ _tcomp_down() {
 
 _tcomp_choose() {
   _tcomp_hist_mode=0
+  _tcomp_refresh_stale
+  local _tcomp_async_ok=1   # the menu for the line after accepting can load in the background
   if (( CURSOR < ${#BUFFER} )); then
     zle forward-char
     return
@@ -533,7 +758,9 @@ _tcomp_choose() {
   _tcomp_selected=1
   _tcomp_preview
   local index same=1
-  if (( $#_tcomp_hits != $#previous_hits )); then
+  if [[ -n $_tcomp_worker_fd ]]; then
+    same=0   # still loading in the background; it will redraw
+  elif (( $#_tcomp_hits != $#previous_hits )); then
     same=0
   else
     for (( index = 1; index <= $#_tcomp_hits; index++ )); do
@@ -569,6 +796,7 @@ _tcomp_accept_line() {
     return
   fi
   _tcomp_hist_mode=0
+  _tcomp_async_cancel
   _tcomp_history_record "$BUFFER"
   _tcomp_record_line "$BUFFER"
   POSTDISPLAY=''
@@ -743,6 +971,7 @@ _tcomp_cancel() {
 # ---------------------------------------------------------------- Tab
 
 _tcomp_tab() {
+  _tcomp_refresh_stale
   # 1. Abbreviation at the cursor.
   if ! _tcomp_in_hist && _tcomp_abbr_match; then
     _tcomp_abbr_expand "$REPLY"
@@ -776,7 +1005,7 @@ _tcomp_tab() {
 }
 
 # Each prompt starts with the history menu closed.
-_tcomp_line_init() { _tcomp_hist_mode=0 }
+_tcomp_line_init() { _tcomp_hist_mode=0; _tcomp_cache_buffer=''; _tcomp_async_cancel }
 autoload -Uz add-zle-hook-widget
 add-zle-hook-widget line-init _tcomp_line_init
 
