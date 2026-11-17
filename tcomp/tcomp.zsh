@@ -684,7 +684,8 @@ _tcomp_redraw_move() {
   if (( $#_tcomp_hits )); then
     # Pulse only when no key is waiting, and cut it short when one arrives,
     # so holding Up/Down keeps pace with key repeat instead of queueing.
-    if (( previous != _tcomp_selected && ! PENDING )); then
+    # History lists (Up menu, Ctrl+R) move the arrow in place: no pulse.
+    if (( previous != _tcomp_selected && ! PENDING && ! _tcomp_search_mode )) && ! _tcomp_in_hist; then
       _tcomp_pulse=1
       _tcomp_render
       zle -R
