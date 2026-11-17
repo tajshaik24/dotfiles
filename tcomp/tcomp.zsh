@@ -22,7 +22,6 @@ typeset -gA _tcomp_branch_candidates
 typeset -gA _tcomp_usage
 _tcomp_usage=()
 typeset -g _tcomp_option_source='' _tcomp_option_stamp=''
-typeset -g _tcomp_history_match=''
 typeset -g _tcomp_history_dir=''
 typeset -ga _tcomp_history_lines
 typeset -gi _tcomp_moved=0   # the highlight was moved with the arrow keys
@@ -216,17 +215,6 @@ _tcomp_capture() {
   compstate[list]=''
 }
 zle -C _tcomp_capture complete-word _tcomp_capture
-
-_tcomp_history_suggest() {
-  _tcomp_history_match=''
-  [[ -n $BUFFER && $CURSOR == ${#BUFFER} && $BUFFER != *$'\n'* ]] || return
-  local suggestion
-  for suggestion in "${(@Oa)_tcomp_history_lines}"; do
-    [[ $suggestion == "$BUFFER"* && $suggestion != "$BUFFER" && $suggestion != *[[:cntrl:]]* ]] || continue
-    _tcomp_history_match=$suggestion
-    return
-  done
-}
 
 _tcomp_render() {
   region_highlight=(${region_highlight:#*memo=tcomp})
@@ -648,12 +636,9 @@ _tcomp_preview() {
   _tcomp_preview_finish
 }
 
-# Add the history suggestion and draw; also run when background results land.
+# Draw; also run when background results land. No history row while typing:
+# history lives in the Up menu and Ctrl+R.
 _tcomp_preview_finish() {
-  _tcomp_history_suggest
-  if [[ -n $_tcomp_history_match ]]; then
-    _tcomp_hits=( "$_tcomp_history_match"$'\t'"$_tcomp_history_match"$'\tHistory\thistory' "${_tcomp_hits[@]}" )
-  fi
   (( _tcomp_selected > $#_tcomp_hits )) && _tcomp_selected=$#_tcomp_hits
   (( _tcomp_selected < 1 )) && _tcomp_selected=1
   _tcomp_render
@@ -879,7 +864,6 @@ _tcomp_accept_line() {
   _tcomp_history_record "$BUFFER"
   _tcomp_record_line "$BUFFER"
   POSTDISPLAY=''
-  _tcomp_history_match=''
   region_highlight=(${region_highlight:#*memo=tcomp})
   _tcomp_hits=()
   zle -R

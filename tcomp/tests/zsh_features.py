@@ -126,11 +126,10 @@ try:
     ok('ls ~/ lists home folders, Tab accepts: ' + line().strip())
     clear()
 
-    # 4. Tab skips the history row
-    keys('-l', 'git l'); wait(lambda: '◷ git log --oneline' in screen(), 'history row'); settle(); shot('history-row')
-    keys('Tab'); settle()
-    assert line().strip() != 'git log --oneline', 'Tab took the history row: ' + line()
-    ok('Tab skips ◷ history row → ' + line().strip())
+    # 4. No history row while typing (history is Up / Ctrl+R)
+    keys('-l', 'git l'); wait(lambda: '↳ log' in screen(), 'git l menu'); settle(); shot('no-history-row')
+    assert '◷' not in screen() and 'git log --oneline' not in screen(), screen()
+    ok('Typing shows no ◷ history row, just completions')
     clear()
 
     # 5. Up on an empty line opens history menu (newest on top; arrows move as drawn)
@@ -264,9 +263,6 @@ try:
     clear()
 
     # 9. History rows show the whole command
-    keys('-l', 'echo this-h'); wait(lambda: LONG in screen(), 'full inline history row'); settle()
-    ok('Inline history suggestion shows the full command')
-    clear()
     keys('Up'); wait(lambda: 'echo newest' in screen() and line().strip() == '', 'history menu'); settle()
     for _ in range(20):                       # it's an old entry: scroll down to it
         if LONG in selected(): break
