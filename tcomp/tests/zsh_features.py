@@ -299,18 +299,29 @@ try:
 
     # 11. Ctrl+R searches every session's history, like lig
     RAN.write_text(SEED)   # drop what the sections above ran
-    def hist_rows(): return [l.strip(' →') for l in screen().splitlines()[1:] if '◷' in l]
+    def search_open(): return '⌕ search' in screen()
+    def hist_rows():   # [(command, age)] between the header and the key hints
+        if not search_open(): return []
+        out = []
+        for l in screen().splitlines()[1:]:
+            if not l.strip() or '⌕ search' in l or '↵ fill' in l: continue
+            parts = re.split(r'\s{2,}', l.lstrip('→ ').rstrip())
+            out.append((parts[0], parts[1] if len(parts) > 1 else ''))
+        return out
     keys('C-r'); wait(lambda: len(hist_rows()) == 4, 'Ctrl+R lists each command once')
-    assert 'git commit -m wip' in selected() and 'Ran just now' in screen(), screen()
-    assert [r.split('◷ ')[1].strip() for r in hist_rows()] == ['git commit -m wip', 'echo git', 'cargo build', 'git checkout main'], hist_rows()
+    assert 'git commit -m wip' in selected(), screen()
+    assert 'every session' in screen() and '1/4' in screen() and '↵ fill' in screen(), screen()
+    assert hist_rows() == [('git commit -m wip', 'now'), ('echo git', '30m'), ('cargo build', '1h'), ('git checkout main', '')], hist_rows()
     ok('Ctrl+R on an empty line: newest first, each once, with when it ran')
     keys('-l', 'git'); wait(lambda: len(hist_rows()) == 3, 'typing narrows')
-    assert [r.split('◷ ')[1].strip() for r in hist_rows()] == ['git commit -m wip', 'git checkout main', 'echo git'], hist_rows()
+    assert [r[0] for r in hist_rows()] == ['git commit -m wip', 'git checkout main', 'echo git'], hist_rows()
     ok('Typing narrows: commands starting with it before ones containing it')
     keys('C-u'); keys('-l', 'GCM'); wait(lambda: len(hist_rows()) == 2 and 'cargo' not in screen(), 'fuzzy, any case')
     ok('Letters in order match too, ignoring case')
     def coloured(): return call('capture-pane', '-e', '-p', '-t', 't')
-    def yellow(row): return re.findall(r'\x1b\[(?:1m\x1b\[)?33m([^\x1b]+)', row)
+    def yellow(row):   # text drawn in yellow, ignoring bold / background codes around it
+        row = re.sub(r'\x1b\[(?:1|48;5;\d+|49)m', '', row)
+        return re.findall(r'\x1b\[33m([^\x1b]+)', row)
     def plain(row): return re.sub(r'\x1b\[[0-9;]*m', '', row)
     keys('C-u'); keys('-l', 'COMMIT')
     wait(lambda: any(yellow(l) == ['commit'] for l in coloured().splitlines() if 'wip' in plain(l)), 'the matched text is yellow')
@@ -331,13 +342,13 @@ try:
     with RAN.open('a') as f: f.write(f'{NOW}\techo from-another-tab\n')
     keys('C-r'); wait(lambda: 'echo from-another-tab' in selected(), "another session's commands show")
     ok("Commands from other sessions show up")
-    keys('C-r'); wait(lambda: '◷' not in screen(), 'Ctrl+R again closes')
+    keys('C-r'); wait(lambda: not search_open(), 'Ctrl+R again closes')
     keys('-l', 'git pus'); wait(lambda: 'push' in screen(), 'normal menu'); settle()
     keys('C-r'); settle()
     assert '↳ push' in screen() or 'push' in selected(), 'no match: the completion menu stays\n' + screen()
     keys('C-g'); clear()
     keys('-l', 'cargo'); keys('C-r'); wait(lambda: 'cargo build' in selected(), 'search'); keys('C-g')
-    wait(lambda: '◷' not in screen() and line().rstrip() == 'cargo', 'Ctrl+G leaves the search, keeping the line')
+    wait(lambda: not search_open() and line().rstrip() == 'cargo', 'Ctrl+G leaves the search, keeping the line')
     ok('Ctrl+R again or Ctrl+G closes; no match keeps the completion menu')
     clear()
     print(f'zsh features: all {len(passed)} checks OK')

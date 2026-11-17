@@ -230,12 +230,13 @@ _tcomp_render() {
   (( _tcomp_search_mode )) && rows=8
   _tcomp_in_hist && rows=8
   local first=$(( _tcomp_selected > rows ? _tcomp_selected - rows + 1 : 1 ))
-  # Up-arrow history menu: its own look (header, selection bar, ages, key hints).
+  # History lists (Up menu and Ctrl+R): their own look (header, selection bar,
+  # ages, key hints).
   local -i hist_view=0 shown hist_width label_width
-  (( ! _tcomp_search_mode )) && _tcomp_in_hist && hist_view=1
+  { (( _tcomp_search_mode )) || _tcomp_in_hist } && hist_view=1
   if (( hist_view )); then
-    # The line is empty, so any other plugin's highlights would land on the menu.
-    region_highlight=()
+    # On an empty line any other plugin's highlights would land on the menu.
+    [[ -z $BUFFER ]] && region_highlight=()
     (( hist_width = COLUMNS - 1 < 72 ? COLUMNS - 1 : 72 ))
     (( label_width = hist_width - 7 > 1 ? hist_width - 7 : 1 ))
     _tcomp_hist_header $hist_width
@@ -245,7 +246,6 @@ _tcomp_render() {
   rest=${_tcomp_hits[_tcomp_selected]#*$'\t'}
   rest=${rest#*$'\t'}
   description=${rest%%$'\t'*}
-  [[ $description == @<-> ]] && { _tcomp_ago ${description#@}; description=$REPLY }
   for (( index = first; index <= $#_tcomp_hits && index < first + rows; index++ )); do
     record=${_tcomp_hits[index]}
     label=${record%%$'\t'*}
@@ -265,7 +265,7 @@ _tcomp_render() {
     POSTDISPLAY+=$'\n'
     start=$(( ${#BUFFER} + ${#POSTDISPLAY} ))
     if (( hist_view )); then
-      _tcomp_hist_row $index $start $label_width "$label"
+      _tcomp_hist_row $index $start $label_width "$label" "${${record#*$'\t'*$'\t'}%%$'\t'*}"
       continue
     fi
     icon_offset=2
@@ -305,11 +305,6 @@ _tcomp_render() {
       local label_style=bold
       (( index == _tcomp_selected )) && label_style=fg=cyan,bold
       region_highlight+=( "$((start + label_offset)) $((start + label_offset + (${#label} < width ? ${#label} : width))) $label_style memo=tcomp" )
-    fi
-    if (( _tcomp_search_mode )) && [[ $kind == history ]] && _tcomp_match_ranges "$label"; then
-      for range in $reply; do   # after the label style, so it wins
-        region_highlight+=( "$((start + label_offset + ${range% *})) $((start + label_offset + ${range#* })) fg=yellow,bold memo=tcomp" )
-      done
     fi
   done
   if (( hist_view )); then
@@ -1004,10 +999,12 @@ _tcomp_abbr_hint() {
 
 # ---------------------------------------------------------------- history menu
 
-# "  ◷ history · ~/dir                     3/20"
+# "  ◷ history · ~/dir                     3/20", or for Ctrl+R
+# "  ⌕ search · every session              3/120"
 _tcomp_hist_header() {
   local -i width=$1 start
   local title='◷ history' dir=${(D)PWD} pos="$_tcomp_selected/$#_tcomp_hits" row
+  (( _tcomp_search_mode )) && { title='⌕ search'; dir='every session' }
   local -i room=$(( width - 2 - ${#title} - 3 - ${#pos} - 1 ))
   (( ${#dir} > room && room > 1 )) && dir="…${dir[-(room - 1),-1]}"
   (( room < 1 )) && dir=''
@@ -1020,13 +1017,15 @@ _tcomp_hist_header() {
   )
 }
 
-# One history row: selection bar, command name in colour, age on the right.
-# Long commands are cut with … unless selected, which shows in full.
+# One history row: selection bar, command name in colour, age on the right,
+# Ctrl+R matches in yellow. Long commands are cut with … unless selected,
+# which shows in full. $5 is the row's description: "@<time>" from Ctrl+R.
 _tcomp_hist_row() {
   local -i index=$1 start=$2 width=$3 shown end age_start
-  local label=$4 text row marker='  ' age_color=8
+  local label=$4 text row marker='  ' age_color=8 range
   local -i t=${_tcomp_history_time[$label]:-0} r=${_tcomp_ran_time[$label]:-0}
   (( r > t )) && t=r
+  [[ $5 == @<-> ]] && (( ${5#@} > t )) && t=${5#@}
   _tcomp_short_ago $t
   (( t && EPOCHSECONDS - t < 3600 )) && age_color=green
   (( t && EPOCHSECONDS - t >= 3600 && EPOCHSECONDS - t < 86400 )) && age_color=yellow
@@ -1057,10 +1056,23 @@ _tcomp_hist_row() {
       "$age_start $((age_start + 3)) fg=$age_color memo=tcomp"
     )
   fi
+  if (( _tcomp_search_mode )) && _tcomp_match_ranges "$label"; then
+    local bg=''
+    (( index == _tcomp_selected )) && bg=',bg=236'
+    local -i from to visible=${#text}
+    [[ $text == *… ]] && (( visible-- ))
+    for range in $reply; do   # after the row styles, so it wins
+      from=${range% *}; to=${range#* }
+      (( from >= visible )) && continue
+      (( to > visible )) && to=visible
+      region_highlight+=( "$((start + 2 + from)) $((start + 2 + to)) fg=yellow,bold$bg memo=tcomp" )
+    done
+  fi
 }
 
 _tcomp_hist_footer() {
   local hint='  ↵ run   → edit   ↑↓ move   ^R search   ^G close' start
+  (( _tcomp_search_mode )) && hint='  ↵ fill   → edit   ↑↓ move   type to filter   ^R/^G close'
   start=$(( ${#BUFFER} + ${#POSTDISPLAY} + 1 ))
   POSTDISPLAY+=$'\n'$hint
   region_highlight+=( "$start $((start + ${#hint})) fg=8 memo=tcomp" )
@@ -1182,16 +1194,6 @@ _tcomp_ran_precmd() {
 add-zsh-hook preexec _tcomp_ran_preexec
 add-zsh-hook precmd _tcomp_ran_precmd
 
-# "3h ago" for a unix time; zsh-history seeds (time 0) have none.
-_tcomp_ago() {
-  local -i t=$1 s=$(( EPOCHSECONDS - $1 ))
-  if (( t == 0 )); then REPLY='History'
-  elif (( s < 60 )); then REPLY='Ran just now'
-  elif (( s < 3600 )); then REPLY="Ran $(( s / 60 ))m ago"
-  elif (( s < 86400 )); then REPLY="Ran $(( s / 3600 ))h ago"
-  else REPLY="Ran $(( s / 86400 ))d ago"; fi
-}
-
 # "5m", "3h", "2d" for the history menu; blank when the time is unknown.
 _tcomp_short_ago() {
   local -i t=$1 s=$(( EPOCHSECONDS - $1 ))
@@ -1247,7 +1249,7 @@ _tcomp_search_fill() {
     found=( ${found:|contains} )                 # contains ⊇ prefix
     found=( $prefix ${contains:|prefix} $found )
   fi
-  # "@<time>" becomes "Ran 3h ago" when drawn (only the selected row shows it).
+  # "@<time>" becomes the age column ("3h") when drawn.
   # Unquoted: an empty slice is no rows.
   local -a rows=()
   for command in ${found[1,200]}; do
