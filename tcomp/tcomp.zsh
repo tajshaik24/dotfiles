@@ -12,7 +12,9 @@ zmodload zsh/datetime # $EPOCHSECONDS for Ctrl+R history
 # Inside widgets fd 0 always polls as readable, so keep our own handle on the
 # terminal to notice the next keypress without consuming it.
 typeset -g _tcomp_tty=''
-[[ -t 0 ]] && exec {_tcomp_tty}</dev/tty 2>/dev/null
+# Braces scope the 2>/dev/null: a bare `exec ... 2>/dev/null` would redirect
+# the whole shell's stderr to /dev/null for the rest of the session.
+[[ -t 0 ]] && { exec {_tcomp_tty}</dev/tty } 2>/dev/null
 
 typeset -gaU _tcomp_hits
 typeset -gA _tcomp_option_kinds
