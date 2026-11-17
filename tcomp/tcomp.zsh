@@ -230,7 +230,7 @@ _tcomp_render() {
   POSTDISPLAY=''
   (( $#_tcomp_hits )) || { _tcomp_abbr_hint; return }
   local first=$(( _tcomp_selected > 5 ? _tcomp_selected - 4 : 1 ))
-  local index description row start kind icon color rest record label icon_offset label_offset width
+  local index description row start kind icon color rest record label icon_offset label_offset width range
   local -a popular_icons=( '①' '②' '③' )
   rest=${_tcomp_hits[_tcomp_selected]#*$'\t'}
   rest=${rest#*$'\t'}
@@ -291,6 +291,11 @@ _tcomp_render() {
       local label_style=bold
       (( index == _tcomp_selected )) && label_style=fg=cyan,bold
       region_highlight+=( "$((start + label_offset)) $((start + label_offset + (${#label} < width ? ${#label} : width))) $label_style memo=tcomp" )
+    fi
+    if (( _tcomp_search_mode )) && [[ $kind == history ]] && _tcomp_match_ranges "$label"; then
+      for range in $reply; do   # after the label style, so it wins
+        region_highlight+=( "$((start + label_offset + ${range% *})) $((start + label_offset + ${range#* })) fg=yellow,bold memo=tcomp" )
+      done
     fi
   done
   POSTDISPLAY+=$'\n'
@@ -1079,6 +1084,31 @@ _tcomp_ago() {
   elif (( s < 3600 )); then REPLY="Ran $(( s / 60 ))m ago"
   elif (( s < 86400 )); then REPLY="Ran $(( s / 3600 ))h ago"
   else REPLY="Ran $(( s / 86400 ))d ago"; fi
+}
+
+# Sets reply to "from to" offsets (0-based, end exclusive) of where the line
+# matches $1, the way _tcomp_search_fill matched it: the first occurrence of
+# the whole query, else each of its letters in order. False if none.
+_tcomp_match_ranges() {
+  emulate -L zsh
+  setopt extended_glob
+  reply=()
+  local label=${(L)1} query=${(L)${BUFFER##[[:space:]]#}} char before
+  [[ -n $query ]] || return 1
+  if [[ $label == *"$query"* ]]; then
+    before=${label%%"$query"*}
+    reply=( "${#before} $(( ${#before} + ${#query} ))" )
+    return 0
+  fi
+  local -i at=0 found
+  for char in ${(s::)query//[[:space:]]/}; do
+    # 1-based within the rest; past its end (or 0 when the rest is empty) if absent.
+    found=${label[at+1,-1][(i)${(b)char}]}
+    (( found >= 1 && found <= ${#label} - at )) || { reply=(); return 1 }
+    (( at += found ))
+    reply+=( "$(( at - 1 )) $at" )
+  done
+  (( $#reply ))
 }
 
 # Fill the menu with the history matching the line; false if nothing matches.

@@ -3,7 +3,7 @@
 Tab acceptance, abbreviations, the empty-line history menu, flag descriptions,
 background completion, the per-word cache, arrow-key responsiveness and Ctrl+R
 history search in zsh."""
-import os, subprocess, tempfile, time, shutil, sys
+import os, re, subprocess, tempfile, time, shutil, sys
 from pathlib import Path
 
 TCOMP = Path(__file__).resolve().parents[1]
@@ -275,6 +275,15 @@ try:
     ok('Typing narrows: commands starting with it before ones containing it')
     keys('C-u'); keys('-l', 'GCM'); wait(lambda: len(hist_rows()) == 2 and 'cargo' not in screen(), 'fuzzy, any case')
     ok('Letters in order match too, ignoring case')
+    def coloured(): return call('capture-pane', '-e', '-p', '-t', 't')
+    def yellow(row): return re.findall(r'\x1b\[(?:1m\x1b\[)?33m([^\x1b]+)', row)
+    def plain(row): return re.sub(r'\x1b\[[0-9;]*m', '', row)
+    keys('C-u'); keys('-l', 'COMMIT')
+    wait(lambda: any(yellow(l) == ['commit'] for l in coloured().splitlines() if 'wip' in plain(l)), 'the matched text is yellow')
+    keys('C-u'); keys('-l', 'gcm')
+    wait(lambda: any(yellow(l) == ['g', 'c', 'm'] for l in coloured().splitlines() if 'checkout' in plain(l)), 'matched letters are yellow')
+    ok('Matched text, or each matched letter, is coloured')
+    keys('C-u'); keys('-l', 'GCM'); wait(lambda: len(hist_rows()) == 2, 'back to GCM')
     keys('Down'); wait(lambda: 'git checkout main' in selected(), 'Down picks an older one'); settle()
     keys('Enter'); wait(lambda: line().rstrip() == 'git checkout main', 'Enter puts it on the line'); settle()
     ok('Enter fills the line without running it')
