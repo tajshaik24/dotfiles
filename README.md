@@ -51,6 +51,7 @@ As you type, a menu of candidates appears under the prompt: subcommands, flags w
 | `↑` / `↓` | Move through the menu |
 | `↑` on an empty line | Open this directory's recent commands, newest first. `↑` older, `↓` past the newest closes, `Enter` runs, `→` fills in, `Ctrl+G` closes |
 | `→` | Accept the highlighted item (a history row fills the whole command) |
+| `Ctrl+R` | Search every session's history for what's on the line: commands starting with it, then containing it, then with its letters in order (any case), newest first. Typing narrows, `↑`/`↓` move, `Enter`, `→` or `Tab` puts one on the line, `Ctrl+R` again or `Ctrl+G` closes. Only commands that exited 0 are kept; the first use imports zsh's history |
 | `Enter` | Expand abbreviations, then run. Never accepts a menu suggestion |
 
 **Abbreviations** replace shell aliases. They live in `tcomp/abbr.tsv`: an abbreviation, a tab, then the expansion, where `%|` marks where the cursor lands. Edits apply immediately. Unlike aliases, the full command shows on screen and in history.

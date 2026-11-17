@@ -10,7 +10,7 @@ Inline command completion and directory-scoped history for zsh. It's a personal 
 - **The `tcomp` binary** (Rust, `src/`) handles the slow or offline parts:
   - `tcomp setup`: indexes commands on `PATH` and starts a background job that parses `--help` output into option catalogs.
   - `tcomp external <cmd> <line>`: completions for commands zsh can't complete itself, borrowed from bash/fish completion scripts (`shell/*-provider.*`) inside a sandbox (`src/sandbox.rs`).
-- **Data** lives in `~/.config/tcomp/`: `history.tsv` (per-directory history), `usage.log` (ranking), `abbr.tsv` (link to `abbr.tsv` here), and generated catalogs in `options/`, `help/`, `fallback/` and `generated/`. Delete the catalogs and run `tcomp setup` to rebuild them.
+- **Data** lives in `~/.config/tcomp/`: `history.tsv` (per-directory history), `ran.tsv` (commands that exited 0, for `Ctrl+R`), `usage.log` (ranking), `abbr.tsv` (link to `abbr.tsv` here), and generated catalogs in `options/`, `help/`, `fallback/` and `generated/`. Delete the catalogs and run `tcomp setup` to rebuild them.
 
 `tcomp.bash` and `tcomp.fish` are the upstream integrations for those shells. They're unused here but still compiled into the binary.
 
@@ -21,7 +21,7 @@ cd tcomp
 cargo test                    # Rust unit tests
 cargo clippy --all-targets    # lint (currently clean)
 zsh -f tests/abbr_expand.zsh  # Enter-expansion edge cases
-python3 tests/zsh_features.py # end-to-end zsh test in tmux: expects "all 35 checks OK"
+python3 tests/zsh_features.py # end-to-end zsh test in tmux: expects "all 42 checks OK"
 ```
 
 - **Editing `tcomp.zsh`:** open a new shell to try it. Nothing needs rebuilding, because `zshrc` sources the repo copy.

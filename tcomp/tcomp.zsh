@@ -8,6 +8,7 @@ zmodload zsh/zutil
 zmodload zsh/zselect
 zmodload zsh/zpty 2>/dev/null
 zmodload zsh/system   # $sysparams[pid] for background workers
+zmodload zsh/datetime # $EPOCHSECONDS for Ctrl+R history
 # Inside widgets fd 0 always polls as readable, so keep our own handle on the
 # terminal to notice the next keypress without consuming it.
 typeset -g _tcomp_tty=''
@@ -25,7 +26,7 @@ typeset -ga _tcomp_history_lines
 typeset -gi _tcomp_selected=1 _tcomp_pulse=0 _tcomp_injected=0 _tcomp_popular_count=0 _tcomp_stale=0
 typeset -gA _tcomp_abbr
 typeset -g _tcomp_abbr_file="$HOME/.config/tcomp/abbr.tsv" _tcomp_abbr_stamp=''
-typeset -gi _tcomp_hist_mode=0 _tcomp_hist_max=20
+typeset -gi _tcomp_hist_mode=0 _tcomp_hist_max=20 _tcomp_search_mode=0
 
 _tcomp_load_usage() {
   local kind context label key weight
@@ -234,6 +235,7 @@ _tcomp_render() {
   rest=${_tcomp_hits[_tcomp_selected]#*$'\t'}
   rest=${rest#*$'\t'}
   description=${rest%%$'\t'*}
+  [[ $description == @<-> ]] && { _tcomp_ago ${description#@}; description=$REPLY }
   for (( index = first; index <= $#_tcomp_hits && index < first + 5; index++ )); do
     record=${_tcomp_hits[index]}
     label=${record%%$'\t'*}
@@ -449,6 +451,7 @@ _tcomp_async_apply() {
 _tcomp_async_ready() {
   local fd=$1 condition=${2-}
   [[ $fd == $_tcomp_worker_fd ]] || { zle -F $fd 2>/dev/null; return }
+  (( _tcomp_search_mode )) && { _tcomp_async_cancel; return }
   if ! _tcomp_async_read; then
     [[ -n $condition ]] && _tcomp_async_cancel   # worker died without answering
     return
@@ -604,6 +607,11 @@ _tcomp_rank_hits() {
 
 _tcomp_preview() {
   _tcomp_stale=0
+  if (( _tcomp_search_mode )); then
+    # Ctrl+R: the line is the search query. Nothing matching: back to completions.
+    _tcomp_search_fill && { _tcomp_render; return }
+    _tcomp_search_mode=0
+  fi
   _tcomp_complete
   _tcomp_preview_finish
 }
@@ -724,6 +732,7 @@ _tcomp_down() {
 _tcomp_choose() {
   _tcomp_hist_mode=0
   _tcomp_refresh_stale
+  _tcomp_search_mode=0
   local _tcomp_async_ok=1   # the menu for the line after accepting can load in the background
   if (( CURSOR < ${#BUFFER} )); then
     zle forward-char
@@ -781,6 +790,14 @@ _tcomp_end_of_line() {
 }
 
 _tcomp_accept_line() {
+  if (( _tcomp_search_mode )); then
+    # Enter in Ctrl+R puts the command on the line; a second Enter runs it.
+    _tcomp_refresh_stale
+    if (( _tcomp_search_mode && $#_tcomp_hits )); then
+      _tcomp_choose
+      return
+    fi
+  fi
   if _tcomp_in_hist; then
     # Enter in the history menu runs the highlighted command, like Up + Enter.
     local record=${_tcomp_hits[_tcomp_selected]}
@@ -796,6 +813,7 @@ _tcomp_accept_line() {
     return
   fi
   _tcomp_hist_mode=0
+  _tcomp_search_mode=0
   _tcomp_async_cancel
   _tcomp_history_record "$BUFFER"
   _tcomp_record_line "$BUFFER"
@@ -925,6 +943,7 @@ _tcomp_abbr_expand_line() {
 
 # Yellow "⇥ expansion" line under the prompt whenever Tab would expand an abbreviation.
 _tcomp_abbr_hint() {
+  (( _tcomp_search_mode )) && return
   _tcomp_in_hist && return
   _tcomp_abbr_match || return
   local mark='%|' hint start
@@ -963,15 +982,172 @@ _tcomp_hist_close() {
   _tcomp_render
 }
 
-# Escape-ish: Ctrl+G closes the history menu.
+# Escape-ish: Ctrl+G closes the history menu or Ctrl+R search.
 _tcomp_cancel() {
-  if _tcomp_in_hist; then _tcomp_hist_close; zle -R; else zle send-break; fi
+  if (( _tcomp_search_mode )); then _tcomp_search_close
+  elif _tcomp_in_hist; then _tcomp_hist_close; zle -R
+  else zle send-break; fi
 }
+
+# ---------------------------------------------------------------- Ctrl+R search
+# ~/.config/tcomp/ran.tsv: <unix time><TAB><command>, one line per command that
+# exited 0, from every session. Seeded once from zsh's history (time 0).
+# Ctrl+R lists them newest first, each once, filtered by the line: commands
+# starting with it, then containing it, then with its letters in order.
+
+typeset -g _tcomp_ran_file="$HOME/.config/tcomp/ran.tsv" _tcomp_ran_stamp='' _tcomp_ran_pending=''
+typeset -ga _tcomp_ran          # newest first, unique
+typeset -gA _tcomp_ran_time     # command -> unix time of its latest run
+typeset -gi _tcomp_ran_max=2000 _tcomp_ran_nlines=0
+
+_tcomp_ran_seed() {
+  [[ -e $_tcomp_ran_file ]] && return
+  local -i n; local line out=''
+  for n in ${(on)${(k)history}}; do
+    line=${history[$n]}
+    [[ -n ${line// } && $line != *[[:cntrl:]]* ]] && out+=$'0\t'"$line"$'\n'
+  done
+  (umask 077; mkdir -p -- "${_tcomp_ran_file:h}" && print -rn -- "$out" >> "$_tcomp_ran_file")
+}
+
+# Load the file into memory when it changed (another session may have added to it).
+_tcomp_ran_load() {
+  _tcomp_ran_seed
+  local -A st; local stamp=''
+  zstat -H st "$_tcomp_ran_file" 2>/dev/null && stamp="${st[ino]}:${st[size]}:${st[mtime]}"
+  [[ -n $stamp && $stamp == $_tcomp_ran_stamp ]] && return
+  local -a lines
+  [[ -r $_tcomp_ran_file ]] && lines=( ${(f)"$(<$_tcomp_ran_file)"} )
+  local -i index
+  local line command
+  if [[ -n $_tcomp_ran_stamp && ${stamp%%:*} == ${_tcomp_ran_stamp%%:*} ]] && (( $#lines >= _tcomp_ran_nlines )); then
+    # Same file, only appended to (by any session): add just the new lines.
+    for line in ${lines[_tcomp_ran_nlines+1,-1]}; do
+      command=${line#*$'\t'}
+      [[ $line == *$'\t'* && -n $command ]] || continue
+      [[ -n ${_tcomp_ran_time[$command]} ]] && _tcomp_ran=( ${_tcomp_ran:#$command} )
+      _tcomp_ran_time[$command]=${line%%$'\t'*}
+      _tcomp_ran=( "$command" $_tcomp_ran )
+    done
+    (( $#_tcomp_ran > _tcomp_ran_max )) && _tcomp_ran=( ${_tcomp_ran[1,_tcomp_ran_max]} )
+  else
+    _tcomp_ran=(); _tcomp_ran_time=()
+    for (( index = $#lines; index >= 1; index-- )); do
+      line=${lines[index]}
+      command=${line#*$'\t'}
+      [[ $line == *$'\t'* && -n $command && -z ${_tcomp_ran_time[$command]} ]] || continue
+      _tcomp_ran_time[$command]=${line%%$'\t'*}
+      _tcomp_ran+=( "$command" )
+      (( $#_tcomp_ran >= _tcomp_ran_max )) && break
+    done
+  fi
+  _tcomp_ran_stamp=$stamp
+  _tcomp_ran_nlines=$#lines
+  # Append-only, so rewrite it once repeats pile up (oldest first, as appended).
+  if (( $#lines > 2 * _tcomp_ran_max )); then
+    local out='' tmp="$_tcomp_ran_file.$$"
+    for command in "${(@Oa)_tcomp_ran}"; do out+="${_tcomp_ran_time[$command]}"$'\t'"$command"$'\n'; done
+    if (umask 077; print -rn -- "$out" > "$tmp" && mv -f -- "$tmp" "$_tcomp_ran_file") 2>/dev/null; then
+      zstat -H st "$_tcomp_ran_file" 2>/dev/null && _tcomp_ran_stamp="${st[ino]}:${st[size]}:${st[mtime]}"
+      _tcomp_ran_nlines=$#_tcomp_ran
+    fi
+  fi
+}
+
+_tcomp_ran_preexec() {
+  _tcomp_ran_pending=$1
+  # A leading space keeps a command out of history, as hist_ignore_space does.
+  [[ $1 == ' '* || -z ${1// } || $1 == *[[:cntrl:]]* ]] && _tcomp_ran_pending=''
+}
+
+_tcomp_ran_precmd() {
+  local -i rc=$?
+  local command=$_tcomp_ran_pending
+  _tcomp_ran_pending=''
+  (( rc == 0 )) && [[ -n $command ]] || return
+  _tcomp_ran_seed   # creates the file private; no fork per prompt after that
+  { print -r -- "$EPOCHSECONDS"$'\t'"$command" >> "$_tcomp_ran_file" } 2>/dev/null
+}
+add-zsh-hook preexec _tcomp_ran_preexec
+add-zsh-hook precmd _tcomp_ran_precmd
+
+# "3h ago" for a unix time; zsh-history seeds (time 0) have none.
+_tcomp_ago() {
+  local -i t=$1 s=$(( EPOCHSECONDS - $1 ))
+  if (( t == 0 )); then REPLY='History'
+  elif (( s < 60 )); then REPLY='Ran just now'
+  elif (( s < 3600 )); then REPLY="Ran $(( s / 60 ))m ago"
+  elif (( s < 86400 )); then REPLY="Ran $(( s / 3600 ))h ago"
+  else REPLY="Ran $(( s / 86400 ))d ago"; fi
+}
+
+# Fill the menu with the history matching the line; false if nothing matches.
+_tcomp_search_fill() {
+  emulate -L zsh
+  setopt extended_glob
+  _tcomp_hits=(); _tcomp_popular_count=0
+  POSTDISPLAY=''
+  region_highlight=(${region_highlight:#*memo=tcomp})
+  local query=${BUFFER##[[:space:]]#} char fuzzy='' command
+  local -a found prefix contains
+  if [[ -z $query ]]; then
+    found=( "${_tcomp_ran[@]}" )
+  else
+    prefix=( "${(@M)_tcomp_ran:#(#i)${query}*}" )
+    contains=( "${(@M)_tcomp_ran:#(#i)*${query}*}" )
+    for char in ${(s::)query//[[:space:]]/}; do fuzzy+="*${(b)char}"; done
+    found=( "${(@M)_tcomp_ran:#(#i)${~fuzzy}*}" )
+    # Unquoted: an empty difference must add nothing, not one empty row.
+    found=( ${found:|contains} )                 # contains ⊇ prefix
+    found=( $prefix ${contains:|prefix} $found )
+  fi
+  # "@<time>" becomes "Ran 3h ago" when drawn (only the selected row shows it).
+  # Unquoted: an empty slice is no rows.
+  local -a rows=()
+  for command in ${found[1,200]}; do
+    rows+=( "$command"$'\t'"$command"$'\t@'"${_tcomp_ran_time[$command]:-0}"$'\thistory' )
+  done
+  _tcomp_hits=( "${rows[@]}" )
+  (( _tcomp_selected > $#_tcomp_hits )) && _tcomp_selected=$#_tcomp_hits
+  (( _tcomp_selected < 1 )) && _tcomp_selected=1
+  (( $#_tcomp_hits ))
+}
+
+# Ctrl+R: search every session's history; again (or Ctrl+G) goes back to completions.
+_tcomp_search() {
+  if (( _tcomp_search_mode )); then _tcomp_search_close; return; fi
+  _tcomp_async_cancel
+  _tcomp_hist_mode=0
+  _tcomp_ran_load
+  _tcomp_search_mode=1
+  _tcomp_selected=1
+  if ! _tcomp_search_fill; then
+    _tcomp_search_mode=0
+    _tcomp_preview
+    zle -M 'No history matches'
+    return
+  fi
+  _tcomp_render
+  zle -R
+}
+
+_tcomp_search_close() {
+  _tcomp_search_mode=0
+  _tcomp_selected=1
+  _tcomp_preview
+  zle -R
+}
+zle -N _tcomp_search
 
 # ---------------------------------------------------------------- Tab
 
 _tcomp_tab() {
   _tcomp_refresh_stale
+  # 0. Ctrl+R search: fill in the highlighted command.
+  if (( _tcomp_search_mode && $#_tcomp_hits )); then
+    _tcomp_choose
+    return
+  fi
   # 1. Abbreviation at the cursor.
   if ! _tcomp_in_hist && _tcomp_abbr_match; then
     _tcomp_abbr_expand "$REPLY"
@@ -1005,7 +1181,7 @@ _tcomp_tab() {
 }
 
 # Each prompt starts with the history menu closed.
-_tcomp_line_init() { _tcomp_hist_mode=0; _tcomp_cache_buffer=''; _tcomp_async_cancel }
+_tcomp_line_init() { _tcomp_hist_mode=0; _tcomp_search_mode=0; _tcomp_cache_buffer=''; _tcomp_async_cancel }
 autoload -Uz add-zle-hook-widget
 add-zle-hook-widget line-init _tcomp_line_init
 
@@ -1021,6 +1197,7 @@ for _tcomp_keymap in emacs viins; do
   bindkey -M "$_tcomp_keymap" '^M' _tcomp_accept_line
   bindkey -M "$_tcomp_keymap" '^E' _tcomp_end_of_line
   bindkey -M "$_tcomp_keymap" '^G' _tcomp_cancel
+  bindkey -M "$_tcomp_keymap" '^R' _tcomp_search
   bindkey -M "$_tcomp_keymap" '^I' _tcomp_tab
   bindkey -M "$_tcomp_keymap" '^[[Z' expand-or-complete
 done

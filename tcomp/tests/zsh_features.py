@@ -1,7 +1,8 @@
 """Run: python3 tcomp/tests/zsh_features.py (needs tmux and tcomp on PATH).
 
 Tab acceptance, abbreviations, the empty-line history menu, flag descriptions,
-background completion, the per-word cache and arrow-key responsiveness in zsh."""
+background completion, the per-word cache, arrow-key responsiveness and Ctrl+R
+history search in zsh."""
 import os, subprocess, tempfile, time, shutil, sys
 from pathlib import Path
 
@@ -26,6 +27,11 @@ LONG = 'echo this-history-entry-is-much-longer-than-forty-one-columns-and-must-s
 (cfg / 'history.tsv').write_text(''.join(f'{repo}\x1f{c}\n' for c in [
     LONG, 'git status', 'echo first', 'ls -la src', 'echo first', 'git log --oneline', 'echo newest']) +
     f'{other}\x1fecho elsewhere\n')
+NOW = int(time.time())
+RAN = cfg / 'ran.tsv'   # Ctrl+R history: <time>\t<command>, oldest first; repeats keep the newest
+SEED = (f'0\tgit checkout main\n{NOW-7200}\tgit commit -m wip\n{NOW-3600}\tcargo build\n'
+        f'{NOW-1800}\techo git\n{NOW-5}\tgit commit -m wip\n')
+RAN.write_text(SEED)
 bins = home / 'bin'; bins.mkdir(); (bins / 'tcomp').symlink_to(shutil.which('tcomp') or sys.exit('tcomp not on PATH: brew bundle first'))
 (home / '.zshrc').write_text(f"""PROMPT='T> '
 autoload -Uz compinit; compinit -D
@@ -255,6 +261,41 @@ try:
     took = changed - t0
     assert prev != before and took < 0.35, f'10 Downs took {took:.2f}s'
     ok(f'10 quick Downs settle in {took*1000:.0f}ms')
+    clear()
+
+    # 11. Ctrl+R searches every session's history, like lig
+    RAN.write_text(SEED)   # drop what the sections above ran
+    def hist_rows(): return [l.strip(' →') for l in screen().splitlines()[1:] if '◷' in l]
+    keys('C-r'); wait(lambda: len(hist_rows()) == 4, 'Ctrl+R lists each command once')
+    assert 'git commit -m wip' in selected() and 'Ran just now' in screen(), screen()
+    assert [r.split('◷ ')[1].strip() for r in hist_rows()] == ['git commit -m wip', 'echo git', 'cargo build', 'git checkout main'], hist_rows()
+    ok('Ctrl+R on an empty line: newest first, each once, with when it ran')
+    keys('-l', 'git'); wait(lambda: len(hist_rows()) == 3, 'typing narrows')
+    assert [r.split('◷ ')[1].strip() for r in hist_rows()] == ['git commit -m wip', 'git checkout main', 'echo git'], hist_rows()
+    ok('Typing narrows: commands starting with it before ones containing it')
+    keys('C-u'); keys('-l', 'GCM'); wait(lambda: len(hist_rows()) == 2 and 'cargo' not in screen(), 'fuzzy, any case')
+    ok('Letters in order match too, ignoring case')
+    keys('Down'); wait(lambda: 'git checkout main' in selected(), 'Down picks an older one'); settle()
+    keys('Enter'); wait(lambda: line().rstrip() == 'git checkout main', 'Enter puts it on the line'); settle()
+    ok('Enter fills the line without running it')
+    keys('Enter'); wait(lambda: RAN.read_text().splitlines()[-1].endswith('\tgit checkout main'), 'a successful run is recorded')
+    assert RAN.read_text().splitlines()[-1].split('\t')[0] != '0'
+    keys('-l', 'false'); keys('Enter'); keys('-l', ' echo secret'); keys('Enter'); keys('-l', 'true'); keys('Enter')
+    wait(lambda: RAN.read_text().splitlines()[-1].endswith('\ttrue'), 'true recorded')
+    text = RAN.read_text(); assert '\tfalse' not in text and 'secret' not in text, text
+    ok('Only commands that exit 0 are kept, and never a leading-space one')
+    keys('C-l'); settle()
+    with RAN.open('a') as f: f.write(f'{NOW}\techo from-another-tab\n')
+    keys('C-r'); wait(lambda: 'echo from-another-tab' in selected(), "another session's commands show")
+    ok("Commands from other sessions show up")
+    keys('C-r'); wait(lambda: '◷' not in screen(), 'Ctrl+R again closes')
+    keys('-l', 'git pus'); wait(lambda: 'push' in screen(), 'normal menu'); settle()
+    keys('C-r'); settle()
+    assert '↳ push' in screen() or 'push' in selected(), 'no match: the completion menu stays\n' + screen()
+    keys('C-g'); clear()
+    keys('-l', 'cargo'); keys('C-r'); wait(lambda: 'cargo build' in selected(), 'search'); keys('C-g')
+    wait(lambda: '◷' not in screen() and line().rstrip() == 'cargo', 'Ctrl+G leaves the search, keeping the line')
+    ok('Ctrl+R again or Ctrl+G closes; no match keeps the completion menu')
     clear()
     print(f'zsh features: all {len(passed)} checks OK')
     shutil.rmtree(SHOTS, ignore_errors=True)
