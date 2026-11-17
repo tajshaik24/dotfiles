@@ -25,6 +25,7 @@ typeset -g _tcomp_option_source='' _tcomp_option_stamp=''
 typeset -g _tcomp_history_match=''
 typeset -g _tcomp_history_dir=''
 typeset -ga _tcomp_history_lines
+typeset -gi _tcomp_moved=0   # the highlight was moved with the arrow keys
 typeset -gi _tcomp_selected=1 _tcomp_pulse=0 _tcomp_injected=0 _tcomp_popular_count=0 _tcomp_stale=0
 typeset -gA _tcomp_abbr
 typeset -g _tcomp_abbr_file="$HOME/.config/tcomp/abbr.tsv" _tcomp_abbr_stamp=''
@@ -231,14 +232,21 @@ _tcomp_render() {
   region_highlight=(${region_highlight:#*memo=tcomp})
   POSTDISPLAY=''
   (( $#_tcomp_hits )) || { _tcomp_abbr_hint; return }
-  local first=$(( _tcomp_selected > 5 ? _tcomp_selected - 4 : 1 ))
+  # History lists (Up menu, Ctrl+R) show more rows than completion menus.
+  local rows=5
+  (( _tcomp_search_mode )) && rows=8
+  _tcomp_in_hist && rows=8
+  local first=$(( _tcomp_selected > rows ? _tcomp_selected - rows + 1 : 1 ))
+  # Up-arrow history menu: plain commands with how long ago each ran, no icons or footer.
+  local -i hist_view=0 shown
+  (( ! _tcomp_search_mode )) && _tcomp_in_hist && hist_view=1
   local index description row start kind icon color rest record label icon_offset label_offset width range
   local -a popular_icons=( '①' '②' '③' )
   rest=${_tcomp_hits[_tcomp_selected]#*$'\t'}
   rest=${rest#*$'\t'}
   description=${rest%%$'\t'*}
   [[ $description == @<-> ]] && { _tcomp_ago ${description#@}; description=$REPLY }
-  for (( index = first; index <= $#_tcomp_hits && index < first + 5; index++ )); do
+  for (( index = first; index <= $#_tcomp_hits && index < first + rows; index++ )); do
     record=${_tcomp_hits[index]}
     label=${record%%$'\t'*}
     kind=${record##*$'\t'}
@@ -256,6 +264,22 @@ _tcomp_render() {
     (( popular_index > 0 && popular_index <= _tcomp_popular_count )) && icon=$popular_icons[popular_index]
     POSTDISPLAY+=$'\n'
     start=$(( ${#BUFFER} + ${#POSTDISPLAY} ))
+    if (( hist_view )); then
+      (( width = COLUMNS - 9 < 44 ? COLUMNS - 9 : 44 ))
+      (( width < 1 )) && width=1
+      (( shown = ${#label} > width ? ${#label} : width ))
+      _tcomp_short_ago ${_tcomp_ran_time[$label]:-0}
+      if (( index == _tcomp_selected )); then
+        printf -v row '→ %-*s  %3s' $shown "$label" "$REPLY"
+        region_highlight+=( "$start $((start + 1)) fg=cyan,bold memo=tcomp"
+                            "$((start + 2)) $((start + 2 + ${#label})) fg=cyan,bold memo=tcomp" )
+      else
+        printf -v row '  %-*s  %3s' $shown "$label" "$REPLY"
+      fi
+      region_highlight+=( "$((start + 2 + shown + 2)) $((start + 2 + shown + 5)) fg=8 memo=tcomp" )
+      POSTDISPLAY+=$row
+      continue
+    fi
     icon_offset=2
     label_offset=4
     width=41
@@ -300,6 +324,7 @@ _tcomp_render() {
       done
     fi
   done
+  (( hist_view )) && return
   POSTDISPLAY+=$'\n'
   width=$(( COLUMNS > 2 ? COLUMNS - 2 : 0 ))
   (( width > 44 )) && width=44
@@ -638,6 +663,7 @@ _tcomp_after_edit() {
   zle ".$WIDGET" "$@"
   _tcomp_selected=1
   _tcomp_pulse=0
+  _tcomp_moved=0
   # More keys already queued (fast typing or a paste): skip this refresh, since
   # each one can take 100ms+ and the keys behind it would lag.
   if (( PENDING )); then
@@ -681,6 +707,7 @@ unset _tcomp_widget
 
 _tcomp_redraw_move() {
   local previous=$1
+  (( previous != _tcomp_selected )) && _tcomp_moved=1
   if (( $#_tcomp_hits )); then
     # Pulse only when no key is waiting, and cut it short when one arrives,
     # so holding Up/Down keeps pace with key repeat instead of queueing.
@@ -703,8 +730,14 @@ _tcomp_up() {
   _tcomp_refresh_stale
   local previous=$_tcomp_selected
   if _tcomp_in_hist; then
-    # History menu lists newest first, so Up walks further back in time.
-    (( _tcomp_selected < $#_tcomp_hits )) && (( _tcomp_selected++ ))
+    # History menu lists newest first: Up moves the highlight up, toward newer;
+    # Up on the newest row closes the menu.
+    if (( _tcomp_selected == 1 )); then
+      _tcomp_hist_close
+      zle -R
+      return
+    fi
+    (( _tcomp_selected-- ))
   elif [[ -z $BUFFER ]] && (( ! $#_tcomp_hits )) && _tcomp_hist_open; then
     _tcomp_render
     zle -R
@@ -722,12 +755,8 @@ _tcomp_down() {
   _tcomp_refresh_stale
   local previous=$_tcomp_selected
   if _tcomp_in_hist; then
-    if (( _tcomp_selected == 1 )); then
-      _tcomp_hist_close
-      zle -R
-      return
-    fi
-    (( _tcomp_selected-- ))
+    # Down moves the highlight down the list, toward older commands.
+    (( _tcomp_selected < $#_tcomp_hits )) && (( _tcomp_selected++ ))
   elif (( $#_tcomp_hits )); then
     (( _tcomp_selected = _tcomp_selected < $#_tcomp_hits ? _tcomp_selected + 1 : $#_tcomp_hits ))
   else
@@ -797,6 +826,15 @@ _tcomp_end_of_line() {
   zle -R
 }
 
+# Enter uses the highlighted completion only when you moved to it with the
+# arrows; otherwise the line runs exactly as typed (so `ls ␣` + Enter is `ls`).
+_tcomp_enter_takes_highlight() {
+  (( CURSOR == ${#BUFFER} )) || return 1
+  (( _tcomp_moved )) || return 1
+  _tcomp_refresh_stale
+  (( $#_tcomp_hits && _tcomp_selected >= 1 && _tcomp_selected <= $#_tcomp_hits ))
+}
+
 _tcomp_accept_line() {
   if (( _tcomp_search_mode )); then
     # Enter in Ctrl+R puts the command on the line; a second Enter runs it.
@@ -805,6 +843,21 @@ _tcomp_accept_line() {
       _tcomp_choose
       return
     fi
+  fi
+  if (( ! _tcomp_search_mode )) && ! _tcomp_in_hist && _tcomp_enter_takes_highlight; then
+    # Completion menu: put the highlighted item on the line, then run it below.
+    local record=${_tcomp_hits[_tcomp_selected]} rest insert prefix
+    rest=${record#*$'\t'}; insert=${rest%%$'\t'*}
+    if [[ ${record##*$'\t'} == history ]]; then
+      BUFFER=$insert
+    else
+      prefix=${BUFFER[1,_tcomp_start]}
+      (( _tcomp_injected )) && prefix+=' '
+      local -a context_words=( ${(z)prefix} )
+      _tcomp_record C "${(j: :)context_words}" "${record%%$'\t'*}"
+      BUFFER=$prefix$insert
+    fi
+    CURSOR=${#BUFFER}
   fi
   if _tcomp_in_hist; then
     # Enter in the history menu runs the highlighted command, like Up + Enter.
@@ -970,6 +1023,7 @@ _tcomp_in_hist() {
 
 _tcomp_hist_open() {
   local line; local -A seen
+  _tcomp_ran_load   # run times for the age column
   _tcomp_hits=()
   for line in "${(@Oa)_tcomp_history_lines}"; do        # newest first
     [[ -n $line && -z ${seen[$line]} && $line != *[[:cntrl:]]* ]] || continue
@@ -1087,6 +1141,16 @@ _tcomp_ago() {
   elif (( s < 3600 )); then REPLY="Ran $(( s / 60 ))m ago"
   elif (( s < 86400 )); then REPLY="Ran $(( s / 3600 ))h ago"
   else REPLY="Ran $(( s / 86400 ))d ago"; fi
+}
+
+# "5m", "3h", "2d" for the history menu; blank when the time is unknown.
+_tcomp_short_ago() {
+  local -i t=$1 s=$(( EPOCHSECONDS - $1 ))
+  if (( t == 0 )); then REPLY=''
+  elif (( s < 60 )); then REPLY='now'
+  elif (( s < 3600 )); then REPLY="$(( s / 60 ))m"
+  elif (( s < 86400 )); then REPLY="$(( s / 3600 ))h"
+  else REPLY="$(( s / 86400 ))d"; fi
 }
 
 # Sets reply to "from to" offsets (0-based, end exclusive) of where the line
@@ -1214,7 +1278,7 @@ _tcomp_tab() {
 }
 
 # Each prompt starts with the history menu closed.
-_tcomp_line_init() { _tcomp_hist_mode=0; _tcomp_search_mode=0; _tcomp_cache_buffer=''; _tcomp_async_cancel }
+_tcomp_line_init() { _tcomp_moved=0; _tcomp_hist_mode=0; _tcomp_search_mode=0; _tcomp_cache_buffer=''; _tcomp_async_cancel }
 autoload -Uz add-zle-hook-widget
 add-zle-hook-widget line-init _tcomp_line_init
 

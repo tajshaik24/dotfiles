@@ -133,38 +133,64 @@ try:
     ok('Tab skips ◷ history row → ' + line().strip())
     clear()
 
-    # 5. Up on an empty line opens history menu
-    keys('Up'); wait(lambda: '◷ echo newest' in screen(), 'history menu'); settle(); shot('up-history-menu')
-    rows = [l for l in screen().splitlines() if '◷' in l]
-    assert '→' in rows[0] and 'echo newest' in rows[0], rows
+    # 5. Up on an empty line opens history menu (newest on top; arrows move as drawn)
+    def menu(): return [l for l in screen().splitlines()[1:] if l.strip()]
+    def sel(): return next((l for l in screen().splitlines() if '→' in l), '')
+    keys('Up'); wait(lambda: 'echo newest' in screen() and line().strip() == '', 'history menu'); settle(); shot('up-history-menu')
+    rows = menu()
+    assert rows[0].startswith('→ echo newest'), rows
+    assert len(rows) == 6 and '◷' not in screen() and 'History' not in screen(), rows
     assert sum('echo first' in r for r in rows) == 1, 'dedupe failed'
     assert not any('elsewhere' in r for r in rows), 'other folder leaked'
-    ok('Up opens folder history, newest first, deduped')
-    keys('Up'); settle(); keys('Up'); settle(); shot('up-up-up')
-    sel = [l for l in screen().splitlines() if '→' in l][0]
-    assert 'echo first' in sel, sel
-    ok('Up again goes further back: ' + sel.strip())
-    keys('Down'); settle(); keys('Down'); settle(); keys('Down'); settle()
-    assert '◷' not in screen(), 'menu should close past newest'
-    ok('Down past newest closes menu')
-    keys('Up'); wait(lambda: '◷' in screen(), 'reopen'); keys('Up'); settle()
+    ok('Up opens folder history, newest on top, deduped, no icons or footer')
+    keys('Down'); settle(); keys('Down'); settle(); shot('down-down')
+    assert 'echo first' in sel(), sel()
+    ok('Down moves the highlight down, to older commands: ' + sel().strip())
+    keys('Up'); settle()
+    assert 'git log --oneline' in sel(), sel()
+    keys('Up'); settle(); keys('Up'); settle()
+    assert 'echo newest' not in screen(), 'Up on the newest row should close the menu'
+    ok('Up moves the highlight up; Up on the newest row closes the menu')
+    keys('Up'); wait(lambda: 'echo newest' in screen(), 'reopen'); keys('Down'); settle()
     keys('Right'); wait(lambda: line().startswith('git log --oneline'), 'Right fills'); settle()
     ok('Right fills the selected command for editing')
     clear()
     out = home / 'ran'
     (cfg / 'history.tsv').open('a').write(f'{repo}\x1ftouch {out}\n')
     keys('-l', 'cd .'); keys('Enter'); settle()                       # reload history (chpwd)
-    keys('Up'); wait(lambda: '◷ touch' in screen() or '◷ cd .' in screen(), 'menu'); settle(); shot('before-enter')
-    if '→ ◷ cd .' in screen(): keys('Up'); settle()
+    keys('Up'); wait(lambda: 'touch' in screen() and line().strip() == '', 'menu'); settle(); shot('before-enter')
+    cd_row = next(r for r in menu() if r.lstrip('→ ').startswith('cd .'))
+    assert cd_row.rstrip().endswith('now'), 'age column: ' + cd_row
+    ok('History menu shows how long ago each command ran: ' + cd_row.strip())
+    if sel().lstrip('→ ').startswith('cd .'): keys('Down'); settle()
     keys('Enter'); wait(out.exists, 'Enter ran selected command')
     ok('Enter runs the highlighted history command')
     settle()
-    keys('Up'); wait(lambda: '◷' in screen(), 'menu'); keys('C-g'); settle()
-    assert '◷' not in screen() and line().strip() == ''
+    keys('Up'); wait(lambda: 'touch' in screen(), 'menu'); keys('C-g'); settle()
+    assert 'touch' not in screen() and line().strip() == ''
     ok('Ctrl+G closes the menu')
     keys('-l', 'echo x'); settle(); keys('Up'); settle()
-    assert '◷ echo newest' not in screen() or line().startswith('echo x')
+    assert line().strip() != '' and not menu()[:1] == ['→ echo newest'], screen()   # no history menu
     ok('Up with text typed keeps tcomp behaviour')
+    clear()
+
+    # 5b. Enter takes the highlighted completion only after arrowing to it
+    def last_hist(): return (cfg / 'history.tsv').read_text().splitlines()[-1].split('\x1f', 1)[1]
+    keys('-l', 'ls -d '); wait(lambda: 'src' in screen() and '→' in screen(), 'ls -d menu'); settle()
+    keys('Enter'); wait(lambda: last_hist().rstrip() == 'ls -d', 'trailing space runs as typed')
+    ok('Enter after a space, without arrowing, runs the line as typed')
+    settle()
+    keys('-l', 'ls -d s'); wait(lambda: 'src' in screen(), 'menu for s'); settle()
+    keys('Enter'); wait(lambda: last_hist() == 'ls -d s', 'half-typed word runs as typed')
+    ok('Enter on a half-typed word you did not arrow to runs as typed')
+    settle()
+    (repo / 'sample.txt').write_text('')
+    keys('-l', 'ls -d s'); wait(lambda: 'src' in screen() and 'sample.txt' in screen(), 'two matches'); settle()
+    keys('Down'); settle(); pick = sel().split('→', 1)[1].split()[1]
+    keys('Enter'); wait(lambda: last_hist().startswith(f'ls -d {pick}'), f'Enter ran the arrowed-to {pick}')
+    ok(f'Enter after arrowing to an item runs it: {last_hist()}')
+    settle()
+    clear()
     clear()
 
     # 6. Enter expands abbreviations in command position, like aliases
@@ -241,10 +267,10 @@ try:
     keys('-l', 'echo this-h'); wait(lambda: LONG in screen(), 'full inline history row'); settle()
     ok('Inline history suggestion shows the full command')
     clear()
-    keys('Up'); wait(lambda: '◷' in screen(), 'history menu'); settle()
-    for _ in range(20):                       # it's an old entry: scroll back to it
+    keys('Up'); wait(lambda: 'echo newest' in screen() and line().strip() == '', 'history menu'); settle()
+    for _ in range(20):                       # it's an old entry: scroll down to it
         if LONG in selected(): break
-        keys('Up'); time.sleep(.08)
+        keys('Down'); time.sleep(.08)
     assert LONG in selected(), screen()
     ok('History menu shows long commands in full')
     keys('C-g'); clear()
