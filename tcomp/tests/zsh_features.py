@@ -135,28 +135,31 @@ try:
     ok('Typing shows no ◷ history row, just completions')
     clear()
 
-    # 5. Up on an empty line opens history menu (newest on top; arrows move as drawn)
+    # 5. Up on an empty line opens history menu (newest at the bottom; Up walks up into the past)
     def menu(): return [l for l in screen().splitlines()[1:] if l.strip() and '◷ history' not in l and '↵ run' not in l]
     def sel(): return next((l for l in screen().splitlines() if '→' in l), '')
     keys('Up'); wait(lambda: 'echo newest' in screen() and line().strip() == '', 'history menu'); settle(); shot('up-history-menu')
     rows = menu()
-    assert rows[0].startswith('→ echo newest'), rows
-    assert len(rows) == 6, rows
+    assert rows[-1].startswith('→ echo newest'), rows
+    assert [r.lstrip('→ ').split('  ')[0] for r in rows] == [
+        LONG[:63] + '…', 'git status',
+        'ls -la src', 'echo first', 'git log --oneline', 'echo newest'], rows
+    assert '◷ history' in screen().splitlines()[1] and '↵ run' in last(), screen()   # header, rows, hints
     head = next(l for l in screen().splitlines() if '◷ history' in l)
     assert '~/repo' in head and '1/6' in head, head
     assert '↵ run' in screen(), 'key hints footer'
     assert sum('echo first' in r for r in rows) == 1, 'dedupe failed'
     assert not any('elsewhere' in r for r in rows), 'other folder leaked'
-    ok('Up opens folder history, newest on top, deduped, with header and key hints')
-    keys('Down'); settle(); keys('Down'); settle(); shot('down-down')
+    ok('Up opens folder history, oldest on top, newest at the bottom, deduped, with header and key hints')
+    keys('Up'); settle(); keys('Up'); settle(); shot('up-up')
     assert 'echo first' in sel(), sel()
-    ok('Down moves the highlight down, to older commands: ' + sel().strip())
-    keys('Up'); settle()
+    ok('Up moves the highlight up, to older commands: ' + sel().strip())
+    keys('Down'); settle()
     assert 'git log --oneline' in sel(), sel()
-    keys('Up'); settle(); keys('Up'); settle()
-    assert 'echo newest' not in screen(), 'Up on the newest row should close the menu'
-    ok('Up moves the highlight up; Up on the newest row closes the menu')
-    keys('Up'); wait(lambda: 'echo newest' in screen(), 'reopen'); keys('Down'); settle()
+    keys('Down'); settle(); keys('Down'); settle()
+    assert 'echo newest' not in screen(), 'Down on the newest row should close the menu'
+    ok('Down moves the highlight down; Down on the newest row closes the menu')
+    keys('Up'); wait(lambda: 'echo newest' in screen(), 'reopen'); keys('Up'); settle()
     keys('Right'); wait(lambda: line().startswith('git log --oneline'), 'Right fills'); settle()
     ok('Right fills the selected command for editing')
     clear()
@@ -167,7 +170,7 @@ try:
     cd_row = next(r for r in menu() if r.lstrip('→ ').startswith('cd .'))
     assert cd_row.rstrip().endswith('now'), 'age column: ' + cd_row
     ok('History menu shows how long ago each command ran: ' + cd_row.strip())
-    if sel().lstrip('→ ').startswith('cd .'): keys('Down'); settle()
+    if sel().lstrip('→ ').startswith('cd .'): keys('Up'); settle()
     keys('Enter'); wait(out.exists, 'Enter ran selected command')
     ok('Enter runs the highlighted history command')
     settle()
@@ -181,11 +184,11 @@ try:
 
     hist = (cfg / 'history.tsv').read_text()
     keys('-l', 'echo timed'); keys('Enter'); settle()
-    last = (cfg / 'history.tsv').read_text()[len(hist):].strip().split('\x1f')
-    assert last[1] == 'echo timed' and abs(int(last[2]) - time.time()) < 30, last
+    added = (cfg / 'history.tsv').read_text()[len(hist):].strip().split('\x1f')
+    assert added[1] == 'echo timed' and abs(int(added[2]) - time.time()) < 30, added
     keys('Up'); wait(lambda: 'echo timed' in screen() and line().strip() == '', 'menu again'); settle()
-    assert menu()[0].rstrip().endswith('now'), menu()[0]
-    ok('Running a command records when, and the menu shows its age: ' + menu()[0].strip())
+    assert menu()[-1].rstrip().endswith('now'), menu()[-1]
+    ok('Running a command records when, and the menu shows its age: ' + menu()[-1].strip())
     keys('C-g'); clear()
 
     # 5b. Enter takes the highlighted completion only after arrowing to it
@@ -279,11 +282,18 @@ try:
 
     # 9. History rows show the whole command
     keys('Up'); wait(lambda: '◷ history' in screen() and line().strip() == '', 'history menu'); settle()
-    for _ in range(20):                       # it's an old entry: scroll down to it
-        if LONG in selected(): break
-        keys('Down'); time.sleep(.08)
-    assert LONG in selected(), screen()
-    ok('History menu shows long commands in full')
+    for _ in range(20):                       # it's an old entry: scroll up to it
+        if LONG[:40] in selected(): break
+        keys('Up'); time.sleep(.08)
+    settle(); shot('long-selected')
+    lines = screen().splitlines()
+    at = next(i for i, l in enumerate(lines) if '→' in l)
+    first, rest = lines[at], lines[at + 1]
+    assert first.rstrip() == '→ ' + LONG[:64], first   # no run time recorded: blank age
+    assert rest.strip() == LONG[64:] and rest.startswith('  ' + LONG[64:]), rest
+    assert all(len(l) < 100 for l in lines), 'no line fills the terminal width'
+    assert '↵ run' in last(), screen()
+    ok('History menu shows a long command in full, continuing on its own indented line')
     keys('C-g'); clear()
 
     # 10. Holding Down doesn't queue up behind the selection animation
@@ -314,10 +324,10 @@ try:
     keys('C-r'); wait(lambda: len(hist_rows()) == 4, 'Ctrl+R lists each command once')
     assert 'git commit -m wip' in selected(), screen()
     assert 'every session' in screen() and '1/4' in screen() and '↵ fill' in screen(), screen()
-    assert hist_rows() == [('git commit -m wip', 'now'), ('echo git', '30m'), ('cargo build', '1h'), ('git checkout main', '')], hist_rows()
-    ok('Ctrl+R on an empty line: newest first, each once, with when it ran')
+    assert hist_rows() == [('git checkout main', ''), ('cargo build', '1h'), ('echo git', '30m'), ('git commit -m wip', 'now')], hist_rows()
+    ok('Ctrl+R on an empty line: newest at the bottom, each once, with when it ran')
     keys('-l', 'git'); wait(lambda: len(hist_rows()) == 3, 'typing narrows')
-    assert [r[0] for r in hist_rows()] == ['git commit -m wip', 'git checkout main', 'echo git'], hist_rows()
+    assert [r[0] for r in hist_rows()] == ['echo git', 'git checkout main', 'git commit -m wip'], hist_rows()
     ok('Typing narrows: commands starting with it before ones containing it')
     keys('C-u'); keys('-l', 'GCM'); wait(lambda: len(hist_rows()) == 2 and 'cargo' not in screen(), 'fuzzy, any case')
     ok('Letters in order match too, ignoring case')
@@ -332,7 +342,7 @@ try:
     wait(lambda: any(yellow(l) == ['g', 'c', 'm'] for l in coloured().splitlines() if 'checkout' in plain(l)), 'matched letters are yellow')
     ok('Matched text, or each matched letter, is coloured')
     keys('C-u'); keys('-l', 'GCM'); wait(lambda: len(hist_rows()) == 2, 'back to GCM')
-    keys('Down'); wait(lambda: 'git checkout main' in selected(), 'Down picks an older one'); settle()
+    keys('Up'); wait(lambda: 'git checkout main' in selected(), 'Up picks an older one'); settle()
     keys('Enter'); wait(lambda: line().rstrip() == 'git checkout main', 'Enter puts it on the line'); settle()
     ok('Enter fills the line without running it')
     keys('Enter'); wait(lambda: RAN.read_text().splitlines()[-1].endswith('\tgit checkout main'), 'a successful run is recorded')

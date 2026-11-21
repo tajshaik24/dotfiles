@@ -29,7 +29,7 @@ typeset -gi _tcomp_moved=0   # the highlight was moved with the arrow keys
 typeset -gi _tcomp_selected=1 _tcomp_pulse=0 _tcomp_injected=0 _tcomp_popular_count=0 _tcomp_stale=0
 typeset -gA _tcomp_abbr
 typeset -g _tcomp_abbr_file="$HOME/.config/tcomp/abbr.tsv" _tcomp_abbr_stamp=''
-typeset -gi _tcomp_hist_mode=0 _tcomp_hist_max=20 _tcomp_search_mode=0
+typeset -gi _tcomp_hist_mode=0 _tcomp_hist_max=20 _tcomp_search_mode=0 _tcomp_hist_first=1
 
 _tcomp_load_usage() {
   local kind context label key weight
@@ -237,9 +237,31 @@ _tcomp_render() {
   if (( hist_view )); then
     # On an empty line any other plugin's highlights would land on the menu.
     [[ -z $BUFFER ]] && region_highlight=()
+    # Rows stay narrower than the terminal: a line that fills or overflows the
+    # width makes the terminal wrap it, and the colours land in the wrong place.
     (( hist_width = COLUMNS - 1 < 72 ? COLUMNS - 1 : 72 ))
-    (( label_width = hist_width - 7 > 1 ? hist_width - 7 : 1 ))
+    (( label_width = hist_width - 8 > 1 ? hist_width - 8 : 1 ))
     _tcomp_hist_header $hist_width
+    # Drawn bottom-up: newest just above the key hints, older ones above it,
+    # so Up walks up the screen into the past.
+    # The window scrolls only when the highlight would leave it.
+    (( _tcomp_hist_first < 1 )) && _tcomp_hist_first=1
+    (( _tcomp_selected < _tcomp_hist_first )) && _tcomp_hist_first=_tcomp_selected
+    (( _tcomp_selected > _tcomp_hist_first + rows - 1 )) && _tcomp_hist_first=$(( _tcomp_selected - rows + 1 ))
+    (( _tcomp_hist_first > $#_tcomp_hits - rows + 1 )) && _tcomp_hist_first=$(( $#_tcomp_hits - rows + 1 ))
+    (( _tcomp_hist_first < 1 )) && _tcomp_hist_first=1
+    first=$_tcomp_hist_first
+    local -i last=$(( first + rows - 1 < $#_tcomp_hits ? first + rows - 1 : $#_tcomp_hits )) at hstart
+    local hrecord
+    for (( at = last; at >= first; at-- )); do
+      hrecord=${_tcomp_hits[at]}
+      [[ -n ${hrecord%%$'\t'*} ]] || continue
+      POSTDISPLAY+=$'\n'
+      hstart=$(( ${#BUFFER} + ${#POSTDISPLAY} ))
+      _tcomp_hist_row $at $hstart $label_width "${hrecord%%$'\t'*}" "${${hrecord#*$'\t'*$'\t'}%%$'\t'*}"
+    done
+    _tcomp_hist_footer
+    return
   fi
   local index description row start kind icon color rest record label icon_offset label_offset width range
   local -i popular
@@ -263,10 +285,6 @@ _tcomp_render() {
     (( popular = index <= _tcomp_popular_count ))
     POSTDISPLAY+=$'\n'
     start=$(( ${#BUFFER} + ${#POSTDISPLAY} ))
-    if (( hist_view )); then
-      _tcomp_hist_row $index $start $label_width "$label" "${${record#*$'\t'*$'\t'}%%$'\t'*}"
-      continue
-    fi
     icon_offset=2
     label_offset=4
     width=41
@@ -280,8 +298,6 @@ _tcomp_render() {
     fi
     (( width = COLUMNS - label_offset - 1 < width ? COLUMNS - label_offset - 1 : width ))
     (( width < 0 )) && width=0
-    # History rows show the whole command (wrapping if needed), never a cut-off prefix.
-    [[ $kind == history ]] && (( ${#label} > width )) && width=${#label}
     if (( index == _tcomp_selected && _tcomp_pulse )); then
       printf -v row ' ➜ %s   %-*.*s' "$icon" $width $width "$label"
     elif (( index == _tcomp_selected )); then
@@ -311,10 +327,6 @@ _tcomp_render() {
       region_highlight+=( "$((start + label_offset)) $((start + label_offset + (${#label} < width ? ${#label} : width))) $label_style memo=tcomp" )
     fi
   done
-  if (( hist_view )); then
-    _tcomp_hist_footer
-    return
-  fi
   POSTDISPLAY+=$'\n'
   width=$(( COLUMNS > 2 ? COLUMNS - 2 : 0 ))
   (( width > 44 )) && width=44
@@ -716,15 +728,9 @@ _tcomp_redraw_move() {
 _tcomp_up() {
   _tcomp_refresh_stale
   local previous=$_tcomp_selected
-  if _tcomp_in_hist; then
-    # History menu lists newest first: Up moves the highlight up, toward newer;
-    # Up on the newest row closes the menu.
-    if (( _tcomp_selected == 1 )); then
-      _tcomp_hist_close
-      zle -R
-      return
-    fi
-    (( _tcomp_selected-- ))
+  if _tcomp_in_hist || (( _tcomp_search_mode && $#_tcomp_hits )); then
+    # History lists draw newest at the bottom: Up moves up the screen, to older.
+    (( _tcomp_selected < $#_tcomp_hits )) && (( _tcomp_selected++ ))
   elif [[ -z $BUFFER ]] && (( ! $#_tcomp_hits )) && _tcomp_hist_open; then
     _tcomp_render
     zle -R
@@ -742,8 +748,15 @@ _tcomp_down() {
   _tcomp_refresh_stale
   local previous=$_tcomp_selected
   if _tcomp_in_hist; then
-    # Down moves the highlight down the list, toward older commands.
-    (( _tcomp_selected < $#_tcomp_hits )) && (( _tcomp_selected++ ))
+    # Down moves down the screen, to newer; Down on the newest row closes the menu.
+    if (( _tcomp_selected == 1 )); then
+      _tcomp_hist_close
+      zle -R
+      return
+    fi
+    (( _tcomp_selected-- ))
+  elif (( _tcomp_search_mode && $#_tcomp_hits )); then
+    (( _tcomp_selected > 1 )) && (( _tcomp_selected-- ))
   elif (( $#_tcomp_hits )); then
     (( _tcomp_selected = _tcomp_selected < $#_tcomp_hits ? _tcomp_selected + 1 : $#_tcomp_hits ))
   else
@@ -1022,54 +1035,78 @@ _tcomp_hist_header() {
 }
 
 # One history row: selection bar, command name in colour, age on the right,
-# Ctrl+R matches in yellow. Long commands are cut with … unless selected,
-# which shows in full. $5 is the row's description: "@<time>" from Ctrl+R.
+# Ctrl+R matches in yellow. Long commands are cut with … unless selected; the
+# selected one shows in full, continuing on indented lines of its own (never
+# left for the terminal to wrap). $5 is the row's description: "@<time>" from Ctrl+R.
 _tcomp_hist_row() {
-  local -i index=$1 start=$2 width=$3 shown end age_start
-  local label=$4 text row marker='  ' age_color=8 range
+  local -i index=$1 start=$2 width=$3 end age_start selected=0 i n from to off visible
+  local label=$4 text row marker='  ' age_color=8 range bg='' piece
   local -i t=${_tcomp_history_time[$label]:-0} r=${_tcomp_ran_time[$label]:-0}
   (( r > t )) && t=r
   [[ $5 == @<-> ]] && (( ${5#@} > t )) && t=${5#@}
   _tcomp_short_ago $t
   (( t && EPOCHSECONDS - t < 3600 )) && age_color=green
   (( t && EPOCHSECONDS - t >= 3600 && EPOCHSECONDS - t < 86400 )) && age_color=yellow
-  text=$label
-  if (( index == _tcomp_selected )); then
-    marker='→ '
-    (( shown = ${#label} > width ? ${#label} : width ))
+  (( index == _tcomp_selected )) && { selected=1; marker='→ '; bg=',bg=236' }
+  # pieces: the label in width-sized chunks (selected), or one cut-off chunk.
+  local -a pieces
+  if (( selected )); then
+    for (( i = 1; i <= ${#label}; i += width )); do pieces+=( "${label[i,i+width-1]}" ); done
   else
+    text=$label
     (( ${#text} > width )) && text="${text[1,width-1]}…"
-    shown=$width
+    pieces=( "$text" )
   fi
-  printf -v row '%s%-*s  %3s ' "$marker" $shown "$text" "$REPLY"
-  POSTDISPLAY+=$row
-  end=$(( start + ${#row} ))
-  age_start=$(( start + 2 + shown + 2 ))
-  local word=${text%% *}
-  if (( index == _tcomp_selected )); then
+  (( $#pieces )) || pieces=( '' )
+  # starts[i]: where piece i begins in POSTDISPLAY (0-based, like region_highlight).
+  local -a starts
+  for (( n = 1; n <= $#pieces; n++ )); do
+    if (( n == 1 )); then
+      printf -v row '%s%-*s  %3s' "$marker" $width "${pieces[1]}" "$REPLY"
+      age_start=$(( start + 2 + width + 2 ))
+    else
+      POSTDISPLAY+=$'\n'
+      start=$(( ${#BUFFER} + ${#POSTDISPLAY} ))
+      printf -v row '  %-*s     ' $width "${pieces[n]}"
+    fi
+    starts+=( $(( start + 2 )) )
+    POSTDISPLAY+=$row
+    end=$(( start + ${#row} ))
+    if (( selected )); then
+      region_highlight+=(
+        "$start $end bg=236 memo=tcomp"
+        "$((start + 2)) $((start + 2 + ${#pieces[n]})) fg=white,bold,bg=236 memo=tcomp"
+      )
+    fi
+  done
+  local word=${label%% *}
+  (( ${#word} > ${#pieces[1]} )) && word=${pieces[1]}
+  [[ $word == *… ]] && word=${word%…}
+  if (( selected )); then
     region_highlight+=(
-      "$start $end bg=236 memo=tcomp"
-      "$start $((start + 1)) fg=cyan,bold,bg=236 memo=tcomp"
-      "$((start + 2)) $((start + 2 + ${#text})) fg=white,bold,bg=236 memo=tcomp"
-      "$((start + 2)) $((start + 2 + ${#word})) fg=cyan,bold,bg=236 memo=tcomp"
+      "$((starts[1] - 2)) $((starts[1] - 1)) fg=cyan,bold,bg=236 memo=tcomp"
+      "${starts[1]} $((${starts[1]} + ${#word})) fg=cyan,bold,bg=236 memo=tcomp"
       "$age_start $((age_start + 3)) fg=$age_color,bg=236 memo=tcomp"
     )
   else
     region_highlight+=(
-      "$((start + 2)) $((start + 2 + ${#word})) fg=green memo=tcomp"
+      "${starts[1]} $((${starts[1]} + ${#word})) fg=green memo=tcomp"
       "$age_start $((age_start + 3)) fg=$age_color memo=tcomp"
     )
   fi
   if (( _tcomp_search_mode )) && _tcomp_match_ranges "$label"; then
-    local bg=''
-    (( index == _tcomp_selected )) && bg=',bg=236'
-    local -i from to visible=${#text}
-    [[ $text == *… ]] && (( visible-- ))
+    visible=${#label}
+    (( ! selected && ${#label} > width )) && visible=$(( width - 1 ))
     for range in $reply; do   # after the row styles, so it wins
       from=${range% *}; to=${range#* }
-      (( from >= visible )) && continue
       (( to > visible )) && to=visible
-      region_highlight+=( "$((start + 2 + from)) $((start + 2 + to)) fg=yellow,bold$bg memo=tcomp" )
+      # A match may span pieces: colour each part in its own piece.
+      while (( from < to )); do
+        n=$(( from / width )); off=$(( from % width ))
+        i=$(( to - from < width - off ? to - from : width - off ))
+        region_highlight+=( "$((starts[n + 1] + off)) $((starts[n + 1] + off + i)) fg=yellow,bold$bg memo=tcomp" )
+        (( from += i ))
+      done
     done
   fi
 }
