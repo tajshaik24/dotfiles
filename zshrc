@@ -21,7 +21,7 @@ export NVM_DIR="$HOME/.nvm"
 
 typeset -U path
 path=(
-  "$HOME/.local/bin"                             # tcomp, rex-agent-restore, Claude Code
+  "$HOME/.local/bin"                             # tcomp, Claude Code
   "$HOMEBREW_PREFIX/bin"
   "$HOMEBREW_PREFIX/sbin"
   "$HOMEBREW_PREFIX/opt/openssl@3/bin"
@@ -73,12 +73,6 @@ for file in ~/.zsh_prompt/*(N.); do
   [[ $file == *.example ]] || source "$file"
 done
 unset file
-
-# ── rex-agent-restore ─────────────────────────────────────────────────
-# Resumes agent chats in panes Rex restores (./rex-agent-restore).
-rar_zsh="${${:-$HOME/.zshrc}:A:h}/rex-agent-restore/share/rex-agent-restore/rex-agent-restore.zsh"
-[ -r "$rar_zsh" ] && source "$rar_zsh"
-unset rar_zsh
 
 # ── Line editor plugins (keep last) ───────────────────────────────────
 # tcomp: inline suggestions. Binary built by install.sh; script sourced from

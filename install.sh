@@ -15,9 +15,6 @@ esac
 DOTFILES_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 BACKUP_DIR="$HOME/dotfiles_backup_$(date +%Y%m%d_%H%M%S)"
 TCOMP_DIR="$HOME/.config/tcomp"
-# Agents whose chats rex-agent-restore saves (it would otherwise guess from
-# config folders, including leftovers from agents no longer installed).
-RAR_AGENTS="claude,cursor"
 
 # Move a real (non-symlink) file aside before it is replaced by a link.
 backup() {
@@ -70,8 +67,8 @@ for brewfile in "${BREWFILES[@]}"; do
   brew bundle --quiet --file="$DOTFILES_DIR/$brewfile"
 done
 
-# One-time migration from the old setup (Homebrew rfig and
-# rex-agent-restore, zsh-autocomplete).
+# One-time migration from the old setup (Homebrew rfig, rex-agent-restore,
+# zsh-autocomplete).
 # Runs after brew bundle so rust stays installed. No-op on new machines.
 if brew list zsh-autocomplete >/dev/null 2>&1; then
   echo "🧹 Removing zsh-autocomplete (conflicts with tcomp)..."
@@ -82,8 +79,11 @@ if brew list rfig >/dev/null 2>&1; then
   echo "🧹 Removing Homebrew rfig (replaced by tcomp)..."
   brew uninstall rfig
 fi
+# rex-agent-restore: Rex now resumes agent chats itself (Claude Code reports
+# its resume command to Rex), so remove the old tool, its agent hooks and its
+# Rex actions, whether they came from Homebrew or the old repo copy.
 if brew list rex-agent-restore >/dev/null 2>&1; then
-  echo "🧹 Removing Homebrew rex-agent-restore (now in this repo)..."
+  echo "🧹 Removing Homebrew rex-agent-restore (Rex resumes agents itself)..."
   brew uninstall rex-agent-restore
 fi
 for tap in tamia6/tap pattont/rex-agent-restore; do
@@ -91,11 +91,25 @@ for tap in tamia6/tap pattont/rex-agent-restore; do
     brew untap "$tap"
   fi
 done
-# Old Homebrew source line; zshrc now sources the repo copy.
-if [ -f "$HOME/.zshrc.local" ] && grep -q '/opt/homebrew/share/rex-agent-restore' "$HOME/.zshrc.local"; then
-  sed -i.bak '/^# >>> rex-agent-restore >>>$/,/^# <<< rex-agent-restore <<<$/d' "$HOME/.zshrc.local"
-  rm -f "$HOME/.zshrc.local.bak"
-fi
+# drop_rar_hooks <json file> <jq path to the hook event array>
+drop_rar_hooks() {
+  if [ -f "$1" ] && grep -q rex-agent-restore "$1"; then
+    echo "🧹 Removing rex-agent-restore hook from $1..."
+    jq --indent 2 "if $2 then $2 |= map(select(tostring | contains(\"rex-agent-restore\") | not)) else . end" \
+      "$1" > "$1.tmp" && mv "$1.tmp" "$1"
+  fi
+}
+drop_rar_hooks "$HOME/.claude/settings.json" '.hooks.SessionStart'
+drop_rar_hooks "$HOME/.cursor/hooks.json" '.hooks.sessionStart'
+for f in "$HOME/.config/rex/init.lua" "$HOME/.zshrc.local"; do
+  if [ -f "$f" ] && grep -q '^# >>> rex-agent-restore >>>$\|^-- >>> rex-agent-restore >>>$' "$f"; then
+    sed -i.bak -e '/^# >>> rex-agent-restore >>>$/,/^# <<< rex-agent-restore <<<$/d' \
+      -e '/^-- >>> rex-agent-restore >>>$/,/^-- <<< rex-agent-restore <<<$/d' "$f"
+    rm -f "$f.bak"
+  fi
+done
+rm -f "$HOME/.local/bin/rex-agent-restore" "$HOME/.config/rex/rex_agent_restore.lua"
+rm -rf "$HOME/.local/state/rex-agent-restore" "$HOME/.config/rex-agent-restore"
 rm -f "$HOME/.local/bin/rfig"
 if [ -d "$HOME/.config/rfig" ] && [ ! -e "$TCOMP_DIR" ]; then
   echo "🚚 Moving ~/.config/rfig to $TCOMP_DIR (keeps your history)..."
@@ -113,11 +127,12 @@ if [ ! -f "$TCOMP_DIR/commands.txt" ]; then
   "$HOME/.local/bin/tcomp" setup --shell zsh
 fi
 
-# rex-agent-restore: point the agent hooks and Rex at the repo copy.
-# --no-shell because zshrc sources its shell part directly.
-echo "🔁 Setting up rex-agent-restore..."
-link rex-agent-restore/bin/rex-agent-restore "$HOME/.local/bin/rex-agent-restore"
-"$HOME/.local/bin/rex-agent-restore" install --no-shell --agents "$RAR_AGENTS" >/dev/null
+# Rex's own agent integration: a skill, plus a Claude Code hook through which
+# Rex resumes Claude chats after a restart (Rex > Session Restore).
+if command -v rex >/dev/null 2>&1; then
+  echo "🔁 Setting up Rex for agents..."
+  rex skill setup --agent claude >/dev/null
+fi
 
 # Optional machine name for the prompt, stored in the gitignored private_keys.
 if [ -t 0 ]; then
